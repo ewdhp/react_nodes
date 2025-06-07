@@ -26,6 +26,7 @@ const FlowComponent = () => {
   const [selectedNodes, setSelectedNodes] = useState([]);
   const [outputLog, setOutputLog] = useState([]);
   const { createTerminal, getTerminal } = useTerminalSocket();
+  const [showLog, setShowLog] = useState(true);
 
   const executeFlow = useCallback((type, startNodeId) => {
     const nodeMap = new Map();
@@ -96,9 +97,12 @@ const FlowComponent = () => {
 
       if (event.ctrlKey && event.altKey && event.key === "r") {
         event.preventDefault();
-        // Only run if there is at least one node
-        if (nodes.length > 0) {
-          // Use the first node's id as the starting point
+        // Only run if there is at least one selected node
+        if (selectedNodes.length > 0) {
+          // Use the first selected node's id as the starting point
+          executeFlow("parallel", selectedNodes[0]);
+        } else if (nodes.length > 0) {
+          // Fallback: run from the first node if nothing is selected
           executeFlow("parallel", nodes[0].id);
         } else {
           console.log("No nodes to run.");
@@ -121,6 +125,11 @@ const FlowComponent = () => {
           return;
         }
         setShowTerminal((prev) => !prev);
+      }
+
+      if (event.ctrlKey && event.altKey && event.key === "l") {
+        event.preventDefault();
+        setShowLog((prev) => !prev);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -371,25 +380,28 @@ const FlowComponent = () => {
         )}
       </div>
       {/* Logs on the right */}
-      <div style={{
-        width: "30vw",
-        height: "100vh",
-        background: "#222",
-        color: "#fff",
-        overflowY: "auto",
-        padding: "1em",
-        fontFamily: "monospace"
-      }}>
-        <h4>SSH Output</h4>
-        {outputLog.map((entry, idx) => (
-          <div key={idx}>
-            <b>Node {entry.nodeId}</b>
-            <span style={{ float: "right", color: "#aaa" }}>{entry.time}</span>
-            <pre style={{ whiteSpace: "pre-wrap" }}>{entry.output}</pre>
-            <hr />
-          </div>
-        ))}
-      </div>
+      {showLog && (
+        <div style={{
+          position: "relative",
+          width: "32vw",
+          height: "97%",
+          background: "#222",
+          color: "#fff",
+          overflowY: "auto",
+          padding: "1em",
+          fontFamily: "monospace"
+        }}>
+          <h4>SSH Output</h4>
+          {outputLog.map((entry, idx) => (
+            <div key={idx}>
+              <b>Node {entry.nodeId}</b>
+              <span style={{ float: "right", color: "#aaa" }}>{entry.time}</span>
+              <pre style={{ whiteSpace: "pre-wrap" }}>{entry.output}</pre>
+              <hr />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
