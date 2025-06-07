@@ -182,13 +182,26 @@ const FlowComponent = () => {
       )
     );
 
+    // Animate outgoing edges
+    setEdges((eds) =>
+      eds.map((e) =>
+        e.source === node.id
+          ? {
+            ...e,
+            animated: true,
+            style: { ...e.style, stroke: "#2196f3", strokeWidth: 2 },
+          }
+          : e
+      )
+    );
+
     // Send Python script via SSH using python3 -c "<script>"
     const termObj = getTerminal(node.id);
     if (termObj && termObj.socket && node.data?.script) {
       const command = node.data.script || "";
 
       const handleMessage = (event) => {
-        console.log("WS message received:", event)
+        console.log("WS message received:", event);
         let lines = event.data.split('\n');
         // Remove echoed command if present
         if (lines[0].trim() === command.trim()) {
@@ -225,7 +238,7 @@ const FlowComponent = () => {
     const executionTime = Math.floor(Math.random() * 2000) + 500;
     await new Promise((resolve) => setTimeout(resolve, executionTime));
 
-    // Remove highlight
+    // Remove highlight from node
     setNodes((nds) =>
       nds.map((n) =>
         n.id === node.id
@@ -238,6 +251,19 @@ const FlowComponent = () => {
             },
           }
           : n
+      )
+    );
+
+    // Remove animation from outgoing edges
+    setEdges((eds) =>
+      eds.map((e) =>
+        e.source === node.id
+          ? {
+            ...e,
+            animated: false,
+            style: { ...e.style, stroke: "#222", strokeWidth: 1 },
+          }
+          : e
       )
     );
   };
