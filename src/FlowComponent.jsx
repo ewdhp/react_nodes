@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import ReactFlow, { addEdge, Background, ReactFlowProvider, applyNodeChanges, useNodesState } from "reactflow";
 import "reactflow/dist/style.css";
-import MonacoEditor from "@monaco-editor/react";
 import { useTerminalSocket } from "./TerminalProvider";
 import { Terminal } from "./Terminal";
 import { FaRedo } from "react-icons/fa"; // <-- Install with: npm install react-icons
+import Prompt from "./Prompt";
+import MonacoEditor from "./MonacoEditor";
 
 const nodeStyle = {
   width: "80px",
@@ -17,7 +18,10 @@ const nodeStyle = {
   fontSize: "14px",
   border: "1px solid black",
 };
-
+const nodeTypes = {
+  prompt: Prompt,
+  editor: MonacoEditor
+}
 const FlowComponent = () => {
   const [nodes, setNodes] = useNodesState([]);
   const [edges, setEdges] = useState([]);
@@ -34,6 +38,8 @@ const FlowComponent = () => {
   const [runExecutions, setRunExecutions] = useState({}); // For replay
   const [renamingNodeId, setRenamingNodeId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
+  const [showNodeTypeMenu, setShowNodeTypeMenu] = useState(false);
+  const [newNodePosition, setNewNodePosition] = useState({ x: 0, y: 0 });
   // Helper to check if there are any connected edges (for a new run)
   const hasConnectedEdges = () => edges && edges.length > 0;
   const handleNodeDoubleClick = (event, node) => {
@@ -63,45 +69,7 @@ const FlowComponent = () => {
       setRenamingNodeId(null);
     }
   };
-  // Custom node renderer
-  const renderNode = (node) => (
-    <div
-      style={{
-        ...nodeStyle,
-        background: "#fff",
-        border: node.style?.border || "1px solid black",
-        position: "relative",
-        cursor: "pointer",
-        userSelect: "none",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center"
-      }}
-      onDoubleClick={(e) => handleNodeDoubleClick(e, node)}
-      onContextMenu={(e) => handleNodeContextMenu(e, node)}
-      title="Double left click to delete. Right click to rename."
-    >
-      {renamingNodeId === node.id ? (
-        <input
-          autoFocus
-          value={renameValue}
-          onChange={handleRenameInputChange}
-          onKeyDown={(e) => handleRenameInputKeyDown(e, node.id)}
-          onBlur={() => setRenamingNodeId(null)}
-          style={{
-            width: "70px",
-            fontSize: 14,
-            borderRadius: 4,
-            border: "1px solid #888",
-            padding: "2px 6px",
-            textAlign: "center"
-          }}
-        />
-      ) : (
-        <span>{node.data.label}</span>
-      )}
-    </div>
-  );
+
   const executeFlow = useCallback((type, startNodeId) => {
     // Increment run counter for each new flow execution
     setRunCount((prev) => prev + 1);
@@ -160,34 +128,39 @@ const FlowComponent = () => {
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.ctrlKey && event.altKey && event.key === "n") {
-        console.log("Creating new node");
         event.preventDefault();
         const position = { x: 100 + nodes.length * 40, y: 100 + nodes.length * 40 };
-        const newId = `${+new Date()}`;
-        const newNode = {
-          id: newId,
-          position,
-          data: { label: `Node ${nodes.length + 1}`, mode: "parallel", script: "echo 'New Node Execution'" },
-          draggable: true, sourcePosition: 'right',
-          targetPosition: 'left',
-          style: { ...nodeStyle },
-        };
-
-        setNodes((nds) => {
-          setTimeout(() => {
-            if (reactFlowInstance.current) {
-              reactFlowInstance.current.setCenter(position.x, position.y, { zoom: 1.5, duration: 300 });
-            }
-          }, 0);
-          return nds.concat(newNode);
-        });
-
-        createTerminal(newId); // Create a terminal for the new node
+        setNewNodePosition(position);
+        setShowNodeTypeMenu(true);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [nodes, createTerminal]);
+  }, [nodes]);
+
+  const handleAddNodeOfType = (typeKey) => {
+    const newId = `${+new Date()}`;
+    const newNode = {
+      id: newId,
+      position: newNodePosition,
+      type: typeKey,
+      data: { label: `${typeKey.charAt(0).toUpperCase() + typeKey.slice(1)} ${nodes.length + 1}` },
+      draggable: true,
+      sourcePosition: 'right',
+      targetPosition: 'left',
+      style: { minWidth: 120, minHeight: 80 },
+    };
+    setNodes((nds) => {
+      setTimeout(() => {
+        if (reactFlowInstance.current) {
+          reactFlowInstance.current.setCenter(newNodePosition.x, newNodePosition.y, { zoom: 1.5, duration: 300 });
+        }
+      }, 0);
+      return nds.concat(newNode);
+    });
+    createTerminal(newId);
+    setShowNodeTypeMenu(false);
+  };
 
   // Toggle terminal/editor and run flow
   useEffect(() => {
@@ -407,6 +380,7 @@ const FlowComponent = () => {
           <ReactFlow
             nodes={nodes}
             edges={edges}
+            nodeTypes={nodeTypes} // <-- Fix: should be nodeTypes, not nodeType
             onNodesChange={onNodesChange}
             onConnect={(params) =>
               setEdges((eds) =>
@@ -424,7 +398,7 @@ const FlowComponent = () => {
             onEdgesChange={onEdgesChange}
             onEdgeClick={(event, edge) => onEdgesChange(edge)}
             onNodeClick={onNodeClick}
-            onNodeContextMenu={handleNodeContextMenu} // <-- Add this line for right-click rename
+            onNodeContextMenu={handleNodeContextMenu}
             onPaneClick={handlePaneClick}
             fitView
             draggable
@@ -476,25 +450,7 @@ const FlowComponent = () => {
             background: "#fff",
             zIndex: 10,
           }}>
-            <MonacoEditor
-              height="100%"
-              defaultLanguage="javascript"
-              value={firstSelectedNode?.data?.script || ""}
-              theme="vs-light"
-              options={{
-                minimap: { enabled: true },
-                scrollbar: { vertical: "hidden", horizontal: "hidden" },
-              }}
-              onChange={(newValue) => {
-                setNodes((nds) =>
-                  nds.map((n) =>
-                    n.id === firstSelectedNode.id
-                      ? { ...n, data: { ...n.data, script: newValue } }
-                      : n
-                  )
-                );
-              }}
-            />
+
           </div>
         )}
         {showTerminal && firstSelectedNode && (
@@ -509,6 +465,57 @@ const FlowComponent = () => {
             borderTop: "2px solid #333",
           }}>
             <Terminal terminalId={firstSelectedNode.id} />
+          </div>
+        )}
+        {/* Node type selection menu */}
+        {showNodeTypeMenu && (
+          <div style={{
+            position: "absolute",
+            top: newNodePosition.y,
+            left: newNodePosition.x,
+            background: "#fff",
+            border: "1px solid #2196f3",
+            borderRadius: 8,
+            boxShadow: "0 2px 12px rgba(33,150,243,0.12)",
+            zIndex: 1000,
+            padding: 12,
+            minWidth: 180
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Select Node Type</div>
+            {Object.keys(nodeTypes).map((typeKey) => (
+              <button
+                key={typeKey}
+                onClick={() => handleAddNodeOfType(typeKey)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "8px 0",
+                  marginBottom: 6,
+                  border: "none",
+                  borderRadius: 4,
+                  background: "#e3f2fd",
+                  color: "#1976d2",
+                  fontWeight: 500,
+                  cursor: "pointer"
+                }}
+              >
+                {typeKey.charAt(0).toUpperCase() + typeKey.slice(1)}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowNodeTypeMenu(false)}
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "8px 0",
+                border: "none",
+                borderRadius: 4,
+                background: "#eee",
+                color: "#888",
+                fontWeight: 500,
+                cursor: "pointer"
+              }}
+            >Cancel</button>
           </div>
         )}
       </div>
@@ -532,68 +539,72 @@ const FlowComponent = () => {
               acc.get(entry.run).push(entry);
               return acc;
             }, new Map())
-          ).map(([run, entries]) => (
-            <div key={run} style={{ marginBottom: 8 }}>
-              <div
-                style={{
-                  background: "#333",
-                  color: "#fff",
-                  padding: "4px 8px",
-                  borderRadius: 4,
-                  marginBottom: 4,
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                  userSelect: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  minHeight: 32
-                }}
-                onClick={() =>
-                  setCollapsedRuns(prev => ({
-                    ...prev,
-                    [run]: !prev[run]
-                  }))
-                }
-              >
-                <span>
-                  {collapsedRuns[run] ? "▶" : "▼"} Run #{run}
-                </span>
-                <button
+          ).map(([run, entries]) => {
+            // Use the node snapshot from the runExecutions for label lookup
+            const runNodes = runExecutions[run]?.nodes || [];
+            return (
+              <div key={run} style={{ marginBottom: 8 }}>
+                <div
                   style={{
-                    background: "none",
-                    border: "none",
-                    color: "#4fc3f7",
+                    background: "#333",
+                    color: "#fff",
+                    padding: "4px 8px",
+                    borderRadius: 4,
+                    marginBottom: 4,
+                    fontWeight: "bold",
                     cursor: "pointer",
-                    marginLeft: 12,
-                    fontSize: 15,
+                    userSelect: "none",
                     display: "flex",
                     alignItems: "center",
-                    padding: 0
+                    justifyContent: "space-between",
+                    minHeight: 32
                   }}
-                  title="Replay this run"
-                  onClick={e => {
-                    e.stopPropagation();
-                    replayRun(run);
-                  }}
+                  onClick={() =>
+                    setCollapsedRuns(prev => ({
+                      ...prev,
+                      [run]: !prev[run]
+                    }))
+                  }
                 >
-                  <FaRedo />
-                </button>
-              </div>
-              {!collapsedRuns[run] && entries.map((entry, idx) => (
-                <div key={idx}>
-                  <b>
-                    Node {nodes.find(n => n.id === entry.nodeId)?.data?.label || entry.nodeId}
-                  </b>
-                  <span style={{ float: "right", color: "#aaa" }}>
-                    {entry.time}
+                  <span>
+                    {collapsedRuns[run] ? "▶" : "▼"} Run #{run}
                   </span>
-                  <pre style={{ whiteSpace: "pre-wrap" }}>{entry.output}</pre>
-                  <hr />
+                  <button
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#4fc3f7",
+                      cursor: "pointer",
+                      marginLeft: 12,
+                      fontSize: 15,
+                      display: "flex",
+                      alignItems: "center",
+                      padding: 0
+                    }}
+                    title="Replay this run"
+                    onClick={e => {
+                      e.stopPropagation();
+                      replayRun(run);
+                    }}
+                  >
+                    <FaRedo />
+                  </button>
                 </div>
-              ))}
-            </div>
-          ))}
+                {!collapsedRuns[run] && entries.map((entry, idx) => (
+                  <div key={idx}>
+                    <b>
+                      Node {runNodes.find(n => n.id === entry.nodeId)?.data?.label || entry.nodeId}
+                    </b>
+                    <span style={{ float: "right", color: "#aaa" }}>
+                      {entry.time}
+                    </span>
+                    <pre style={{ whiteSpace: "pre-wrap" }}>{entry.output}</pre>
+                    <hr />
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
