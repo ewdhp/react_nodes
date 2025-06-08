@@ -1,8 +1,6 @@
 import React from "react";
-import { TerminalProvider } from "./TerminalProvider";
-import { Terminal } from "./Terminal";
 import FlowComponent from "./FlowComponent";
-
+import TerminalProvider from "./TerminalProvider";
 function App() {
   return (
     <TerminalProvider>

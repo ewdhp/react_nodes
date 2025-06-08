@@ -158,3 +158,5 @@ export const useTerminalSocket = () => {
     }
     return context;
 };
+
+export default TerminalProvider;

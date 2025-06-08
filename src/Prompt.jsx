@@ -1,68 +1,65 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Handle, Position } from "reactflow";
 
-const Prompt = ({ data, style }) => {
+const Prompt = ({ data, style, onSend }) => {
     const [value, setValue] = useState("");
+    const textareaRef = useRef(null);
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        // You can add your submit logic here
-        setValue("");
+    // Focus textarea on mount
+    useEffect(() => {
+        if (textareaRef.current) textareaRef.current.focus();
+    }, []);
+
+    const handleKeyDown = (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (value.trim()) {
+                if (onSend) onSend(value);
+                setValue("");
+            }
+        }
     };
 
     return (
         <div
             style={{
                 ...style,
-                background: "#f5f7fa",
-                border: "2px solid #2196f3",
-                borderRadius: 12,
                 padding: 12,
-                minWidth: 120,
-                minHeight: 80,
+                minWidth: 240,
+                minHeight: 120,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                boxShadow: "0 2px 8px rgba(33,150,243,0.08)",
-                position: "relative"
+                position: "relative",
+                fontSize: 11,
+                border: "none", // removed border
             }}
         >
             {/* Left (target) handle */}
-            <Handle type="target" position={Position.Left} style={{ background: "#2196f3", width: 12, height: 12, borderRadius: 6, left: -6 }} />
+            <Handle type="target" position={Position.Left} style={{ background: "black", width: 8, height: 8, borderRadius: 6, left: -13 }} />
             {/* Right (source) handle */}
-            <Handle type="source" position={Position.Right} style={{ background: "#2196f3", width: 12, height: 12, borderRadius: 6, right: -6 }} />
-            <div style={{ fontWeight: 600, marginBottom: 8, color: "#1976d2" }}>{data?.label || "Prompt"}</div>
-            <form onSubmit={handleSubmit} style={{ width: "100%", display: "flex", gap: 6 }}>
-                <input
-                    type="text"
-                    value={value}
-                    onChange={e => setValue(e.target.value)}
-                    placeholder={data?.placeholder || "Type here..."}
-                    style={{
-                        flex: 1,
-                        padding: 6,
-                        borderRadius: 6,
-                        border: "1px solid #bbb",
-                        fontSize: 14,
-                        outline: "none"
-                    }}
-                />
-                <button
-                    type="submit"
-                    style={{
-                        padding: "6px 14px",
-                        borderRadius: 6,
-                        border: "none",
-                        background: "#2196f3",
-                        color: "#fff",
-                        fontWeight: 500,
-                        cursor: "pointer"
-                    }}
-                >
-                    Send
-                </button>
-            </form>
+            <Handle type="source" position={Position.Right} style={{ background: "black", width: 8, height: 8, borderRadius: 6, right: -13 }} />
+            <div style={{ fontWeight: 600, marginBottom: 8, color: "black" }}>{data?.label || "Prompt"}</div>
+            <textarea
+                ref={textareaRef}
+                value={value}
+                onChange={e => setValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={data?.placeholder || "Type here... (Enter to send, Shift+Enter for newline)"}
+                rows={3}
+                style={{
+                    width: "100%",
+                    minHeight: 48,
+                    resize: "vertical",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    outline: "none",
+                    padding: 6,
+                    marginBottom: 6,
+                    fontFamily: "inherit"
+                }}
+            />
         </div>
     );
 };

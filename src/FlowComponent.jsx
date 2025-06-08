@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import ReactFlow, { addEdge, Background, ReactFlowProvider, applyNodeChanges, useNodesState } from "reactflow";
 import "reactflow/dist/style.css";
 import { useTerminalSocket } from "./TerminalProvider";
@@ -6,61 +6,75 @@ import { Terminal } from "./Terminal";
 import { FaRedo } from "react-icons/fa"; // <-- Install with: npm install react-icons
 import Prompt from "./Prompt";
 import MonacoEditor from "./MonacoEditor";
+import AIAPISelector from "./AIAPISelector";
+import CustomNode from "./CustomNode";
+import NodeTypeMenu from './NodeTypeMenu';
 
-const nodeStyle = {
-  width: "80px",
-  height: "80px",
-  borderRadius: "50%",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textAlign: "center",
-  fontSize: "14px",
-  border: "1px solid black",
-};
-const nodeTypes = {
-  prompt: Prompt,
-  editor: MonacoEditor
-}
 const FlowComponent = () => {
+  // --- State for nodes, edges, and React Flow instance ---
   const [nodes, setNodes] = useNodesState([]);
   const [edges, setEdges] = useState([]);
   const reactFlowInstance = useRef(null);
+
+  // --- State for editor, terminal, and log visibility ---
   const [showEditor, setShowEditor] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+
+  // --- State for selected nodes and output log ---
   const [selectedNodes, setSelectedNodes] = useState([]);
   const [outputLog, setOutputLog] = useState([]);
-  const { createTerminal, getTerminal } = useTerminalSocket();
-  const [showLog, setShowLog] = useState(true);
-  const [runCount, setRunCount] = useState(0);
-  const [currentRun, setCurrentRun] = useState(0);
-  const [collapsedRuns, setCollapsedRuns] = useState({});
+
+  // --- State for run executions, renaming, node type menu, and new node position ---
+  // runExecutions: stores snapshots of nodes/edges for replay
+  // renamingNodeId/renameValue: for inline node renaming
+  // showNodeTypeMenu/newNodePosition: for node creation UI
   const [runExecutions, setRunExecutions] = useState({}); // For replay
   const [renamingNodeId, setRenamingNodeId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [showNodeTypeMenu, setShowNodeTypeMenu] = useState(false);
   const [newNodePosition, setNewNodePosition] = useState({ x: 0, y: 0 });
-  // Helper to check if there are any connected edges (for a new run)
+
+  const { createTerminal, getTerminal } = useTerminalSocket();
+  const [runCount, setRunCount] = useState(0);
+  const [currentRun, setCurrentRun] = useState(0);
+  const [collapsedRuns, setCollapsedRuns] = useState({});
+
+  // --- Utility: Check if there are any connected edges ---
+  // Returns true if there is at least one edge in the graph
   const hasConnectedEdges = () => edges && edges.length > 0;
+
+  // --- Node double click handler ---
+  // Removes the node from the graph on double click (left button)
   const handleNodeDoubleClick = (event, node) => {
     if (event.button === 0) { // Left double click
       setNodes((nds) => nds.filter((n) => n.id !== node.id));
       setSelectedNodes((prev) => prev.filter(id => id !== node.id));
     }
   };
+
+  // --- Node context menu handler ---
+  // Opens inline renaming input for the node
   const handleNodeContextMenu = (event, node) => {
     event.preventDefault();
     setRenamingNodeId(node.id);
     setRenameValue(node.data.label || "");
   };
 
+  // --- Rename input change handler ---
+  // Updates the rename input value as the user types
   const handleRenameInputChange = (e) => setRenameValue(e.target.value);
 
+  // --- Rename input keydown handler ---
+  // Commits or cancels renaming on Enter/Escape
   const handleRenameInputKeyDown = (e, nodeId) => {
     if (e.key === "Enter") {
       setNodes((nds) =>
         nds.map((n) =>
-          n.id === nodeId ? { ...n, data: { ...n.data, label: renameValue } } : n
+          n.id === nodeId ? {
+            ...n, data:
+              { ...n.data, label: renameValue }
+          } : n
         )
       );
       setRenamingNodeId(null);
@@ -70,6 +84,11 @@ const FlowComponent = () => {
     }
   };
 
+  // --- Flow execution handler ---
+  // Executes the graph from a start node, sequentially or in parallel
+  // - Increments run counters
+  // - Saves a snapshot of the graph for replay
+  // - Recursively executes nodes and their children
   const executeFlow = useCallback((type, startNodeId) => {
     // Increment run counter for each new flow execution
     setRunCount((prev) => prev + 1);
@@ -106,13 +125,15 @@ const FlowComponent = () => {
       const node = nodes.find((n) => n.id === nodeId);
       if (node) {
         await executeNode(node, currentRun + 1);
-        await Promise.all((nodeMap.get(nodeId) || []).map((target) => executeParallel(target)));
+        await Promise.all((nodeMap.get(nodeId) || [])
+          .map((target) => executeParallel(target)));
       }
     };
 
     // Use the provided startNodeId or fallback to "1"
     const startId = startNodeId || "1";
-    type === "sequential" ? executeSequential(startId) : executeParallel(startId);
+    type === "sequential" ?
+      executeSequential(startId) : executeParallel(startId);
   }, [edges, nodes, currentRun]);
 
   // Replay logic
@@ -129,7 +150,9 @@ const FlowComponent = () => {
     const handleKeyDown = (event) => {
       if (event.ctrlKey && event.altKey && event.key === "n") {
         event.preventDefault();
-        const position = { x: 100 + nodes.length * 40, y: 100 + nodes.length * 40 };
+        const position = {
+          x: 100 + nodes.length * 40, y: 100 + nodes.length * 40
+        };
         setNewNodePosition(position);
         setShowNodeTypeMenu(true);
       }
@@ -140,11 +163,37 @@ const FlowComponent = () => {
 
   const handleAddNodeOfType = (typeKey) => {
     const newId = `${+new Date()}`;
+    // Default node size (should match CustomNode default)
+    const nodeWidth = 360;
+    const nodeHeight = 180;
+    let position = { x: 0, y: 0 };
+    if (reactFlowInstance.current && reactFlowInstance.current.project) {
+      const graphDiv = document.querySelector('.react-flow');
+      if (graphDiv) {
+        const rect = graphDiv.getBoundingClientRect();
+        // Get the center of the canvas in screen coordinates
+        const centerScreen = {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2
+        };
+        // Convert to flow coordinates
+        let centerFlow = reactFlowInstance.current.project({
+          x: centerScreen.x - rect.left,
+          y: centerScreen.y - rect.top
+        });
+        // Adjust so the node is centered (not top-left)
+        centerFlow.x -= nodeWidth / 2;
+        centerFlow.y -= nodeHeight / 2;
+        position = centerFlow;
+      }
+    }
     const newNode = {
       id: newId,
-      position: newNodePosition,
+      position,
       type: typeKey,
-      data: { label: `${typeKey.charAt(0).toUpperCase() + typeKey.slice(1)} ${nodes.length + 1}` },
+      data: {
+        label: `${typeKey.charAt(0).toUpperCase() + typeKey.slice(1)} ${nodes.length + 1}`
+      },
       draggable: true,
       sourcePosition: 'right',
       targetPosition: 'left',
@@ -153,7 +202,7 @@ const FlowComponent = () => {
     setNodes((nds) => {
       setTimeout(() => {
         if (reactFlowInstance.current) {
-          reactFlowInstance.current.setCenter(newNodePosition.x, newNodePosition.y, { zoom: 1.5, duration: 300 });
+          reactFlowInstance.current.setCenter(position.x + nodeWidth / 2, position.y + nodeHeight / 2, { zoom: 1.5, duration: 300 });
         }
       }, 0);
       return nds.concat(newNode);
@@ -241,7 +290,7 @@ const FlowComponent = () => {
       nds.map((n) =>
         selectedNodes.includes(n.id)
           ? { ...n, style: { ...n.style, border: "3px solid #2196f3" } }
-          : { ...n, style: { ...n.style, border: "1px solid black" } }
+          : { ...n, style: { ...n.style, border: "none" } }
       )
     );
   }, [selectedNodes, setNodes]);
@@ -292,7 +341,8 @@ const FlowComponent = () => {
         }
         const cleanedOutput = lines
           .filter(line =>
-            !/^[\x1b\[\]0-9;]*[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+:.*\$ ?$/.test(line.trim())
+            !/^[\x1b\[\]0-9;]*[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+:.*\$ ?$/
+              .test(line.trim())
           )
           .join('\n')
           .replace(/\x1b\[[0-9;]*m/g, '')
@@ -330,7 +380,7 @@ const FlowComponent = () => {
             ...n,
             style: {
               ...n.style,
-              border: "1px solid black",
+              border: "none",
               animation: "none",
             },
           }
@@ -358,13 +408,30 @@ const FlowComponent = () => {
     setNodes((nds) =>
       nds.map((n) => ({
         ...n,
-        style: { ...n.style, border: "1px solid black" }
+        style: { ...n.style, border: "none" }
       }))
     );
   };
 
   // Use the first selected node for editor/terminal
   const firstSelectedNode = nodes.find(n => n.id === selectedNodes[0]);
+
+  // --- onNodeUpdate: update node data by id ---
+  const onNodeUpdate = useCallback((id, newData) => {
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, ...newData } } : n
+      )
+    );
+  }, [setNodes]);
+
+  // --- nodeTypes with onNodeUpdate injected ---
+  const nodeTypes = useMemo(() => ({
+    base: (props) => <CustomNode {...props} data={{ ...props.data, onNodeUpdate: (data) => onNodeUpdate(props.id, data) }} />, // inject onNodeUpdate
+    prompt: Prompt,
+    editor: MonacoEditor,
+    aiapiselector: AIAPISelector,
+  }), [onNodeUpdate]);
 
   return (
     <div style={{ display: "flex", height: "100vh" }}>
@@ -380,7 +447,7 @@ const FlowComponent = () => {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            nodeTypes={nodeTypes} // <-- Fix: should be nodeTypes, not nodeType
+            nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             onConnect={(params) =>
               setEdges((eds) =>
@@ -468,61 +535,17 @@ const FlowComponent = () => {
           </div>
         )}
         {/* Node type selection menu */}
-        {showNodeTypeMenu && (
-          <div style={{
-            position: "absolute",
-            top: newNodePosition.y,
-            left: newNodePosition.x,
-            background: "#fff",
-            border: "1px solid #2196f3",
-            borderRadius: 8,
-            boxShadow: "0 2px 12px rgba(33,150,243,0.12)",
-            zIndex: 1000,
-            padding: 12,
-            minWidth: 180
-          }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Select Node Type</div>
-            {Object.keys(nodeTypes).map((typeKey) => (
-              <button
-                key={typeKey}
-                onClick={() => handleAddNodeOfType(typeKey)}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "8px 0",
-                  marginBottom: 6,
-                  border: "none",
-                  borderRadius: 4,
-                  background: "#e3f2fd",
-                  color: "#1976d2",
-                  fontWeight: 500,
-                  cursor: "pointer"
-                }}
-              >
-                {typeKey.charAt(0).toUpperCase() + typeKey.slice(1)}
-              </button>
-            ))}
-            <button
-              onClick={() => setShowNodeTypeMenu(false)}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "8px 0",
-                border: "none",
-                borderRadius: 4,
-                background: "#eee",
-                color: "#888",
-                fontWeight: 500,
-                cursor: "pointer"
-              }}
-            >Cancel</button>
-          </div>
-        )}
+        <NodeTypeMenu
+          nodeTypes={nodeTypes}
+          open={showNodeTypeMenu}
+          onSelect={handleAddNodeOfType}
+          onCancel={() => setShowNodeTypeMenu(false)}
+        />
       </div>
       {showLog && (
         <div style={{
           position: "relative",
-          width: "27vw",
+          width: "35vw",
           height: "97%",
           background: "#222",
           color: "#fff",
@@ -531,7 +554,9 @@ const FlowComponent = () => {
           fontFamily: "monospace"
         }}>
           <h4>SSH Output</h4>
-          <div style={{ marginBottom: 8, color: "#aaa" }}>Total Runs: {runCount}</div>
+          <div style={{ marginBottom: 8, color: "#aaa" }}>
+            Total Runs: {runCount}
+          </div>
           {/* Group log entries by run */}
           {Array.from(
             outputLog.reduce((acc, entry) => {
@@ -593,7 +618,9 @@ const FlowComponent = () => {
                 {!collapsedRuns[run] && entries.map((entry, idx) => (
                   <div key={idx}>
                     <b>
-                      Node {runNodes.find(n => n.id === entry.nodeId)?.data?.label || entry.nodeId}
+                      Node {runNodes.find
+                        (n => n.id === entry.nodeId)
+                        ?.data?.label || entry.nodeId}
                     </b>
                     <span style={{ float: "right", color: "#aaa" }}>
                       {entry.time}
