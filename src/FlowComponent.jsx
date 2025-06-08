@@ -9,6 +9,7 @@ import MonacoEditor from "./MonacoEditor";
 import AIAPISelector from "./AIAPISelector";
 import CustomNode from "./CustomNode";
 import NodeTypeMenu from './NodeTypeMenu';
+import LogPane from './LogPane';
 
 const FlowComponent = () => {
   // --- State for nodes, edges, and React Flow instance ---
@@ -441,7 +442,8 @@ const FlowComponent = () => {
         minWidth: 0,
         position: "relative",
         height: "100vh",
-        background: "#f8f8f8"
+        background: "#f8f8f8",
+        overflow: "hidden", // Prevent unwanted scrollbars
       }}>
         <ReactFlowProvider>
           <ReactFlow
@@ -542,98 +544,16 @@ const FlowComponent = () => {
           onCancel={() => setShowNodeTypeMenu(false)}
         />
       </div>
-      {showLog && (
-        <div style={{
-          position: "relative",
-          width: "35vw",
-          height: "97%",
-          background: "#222",
-          color: "#fff",
-          overflowY: "auto",
-          padding: "1em",
-          fontFamily: "monospace"
-        }}>
-          <h4>SSH Output</h4>
-          <div style={{ marginBottom: 8, color: "#aaa" }}>
-            Total Runs: {runCount}
-          </div>
-          {/* Group log entries by run */}
-          {Array.from(
-            outputLog.reduce((acc, entry) => {
-              if (!acc.has(entry.run)) acc.set(entry.run, []);
-              acc.get(entry.run).push(entry);
-              return acc;
-            }, new Map())
-          ).map(([run, entries]) => {
-            // Use the node snapshot from the runExecutions for label lookup
-            const runNodes = runExecutions[run]?.nodes || [];
-            return (
-              <div key={run} style={{ marginBottom: 8 }}>
-                <div
-                  style={{
-                    background: "#333",
-                    color: "#fff",
-                    padding: "4px 8px",
-                    borderRadius: 4,
-                    marginBottom: 4,
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                    userSelect: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    minHeight: 32
-                  }}
-                  onClick={() =>
-                    setCollapsedRuns(prev => ({
-                      ...prev,
-                      [run]: !prev[run]
-                    }))
-                  }
-                >
-                  <span>
-                    {collapsedRuns[run] ? "▶" : "▼"} Run #{run}
-                  </span>
-                  <button
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#4fc3f7",
-                      cursor: "pointer",
-                      marginLeft: 12,
-                      fontSize: 15,
-                      display: "flex",
-                      alignItems: "center",
-                      padding: 0
-                    }}
-                    title="Replay this run"
-                    onClick={e => {
-                      e.stopPropagation();
-                      replayRun(run);
-                    }}
-                  >
-                    <FaRedo />
-                  </button>
-                </div>
-                {!collapsedRuns[run] && entries.map((entry, idx) => (
-                  <div key={idx}>
-                    <b>
-                      Node {runNodes.find
-                        (n => n.id === entry.nodeId)
-                        ?.data?.label || entry.nodeId}
-                    </b>
-                    <span style={{ float: "right", color: "#aaa" }}>
-                      {entry.time}
-                    </span>
-                    <pre style={{ whiteSpace: "pre-wrap" }}>{entry.output}</pre>
-                    <hr />
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {/* Decoupled LogPane with mouse drag scroll, no visible scrollbar */}
+      <LogPane
+        showLog={showLog}
+        runCount={runCount}
+        outputLog={outputLog}
+        runExecutions={runExecutions}
+        collapsedRuns={collapsedRuns}
+        setCollapsedRuns={setCollapsedRuns}
+        replayRun={replayRun}
+      />
     </div>
   );
 };
