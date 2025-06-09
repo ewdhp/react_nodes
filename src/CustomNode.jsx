@@ -2,26 +2,13 @@ import React, { useRef, useState } from 'react';
 import { Handle, Position } from 'reactflow';
 import NodeMenu from './NodeMenu';
 
-const lineStyle = {
-    position: 'absolute',
-    background: '#d0d0d0',
-    zIndex: 1,
-};
-
-const BORDER_SENSITIVITY = 12;
-const MIN_WIDTH = 180;
-const MIN_HEIGHT = 80;
-
-function CustomNode({ data, selected }) {
+function CustomNode({ data, selected, hideNavBar = false, borderRadius = 0, children, style = {} }) {
     // Initialize from data
     const initialRectSize = data?.rectSize || { width: 360, height: 180 };
     const initialCollapsed = data?.collapsed || false;
     const [size, setSize] = useState(initialRectSize);
     const [collapsed, setCollapsed] = useState(initialCollapsed);
     const [prevSize, setPrevSize] = useState(null);
-    const resizing = useRef(null);
-    const [resizeDir, setResizeDir] = useState(null); // 'right' | 'bottom' | 'corner' | null
-    const nodeRef = useRef();
     const [menuOpen, setMenuOpen] = useState(false);
     const [menuFocusIdx, setMenuFocusIdx] = useState(0); // Track focused menu item
     const [edgesVisible, setEdgesVisible] = useState(true); // new state for edge visibility
@@ -33,7 +20,6 @@ function CustomNode({ data, selected }) {
         { label: 'Menu Item', onClick: () => {/* TODO: implement action */ } },
         // Add more menu items here if needed
     ];
-    const menuRef = useRef();
     const menuButtonRef = useRef(); // new: for anchor
     const hiddenLabelRef = useRef();
 
@@ -41,76 +27,6 @@ function CustomNode({ data, selected }) {
     React.useEffect(() => {
         if (menuOpen) setMenuFocusIdx(0);
     }, [menuOpen]);
-
-    // --- Overlay styles for resizing ---
-    const overlayStyle = {
-        position: 'absolute',
-        zIndex: 100,
-        pointerEvents: 'auto',
-        background: 'rgba(0,0,0,0.01)',
-    };
-    const rightOverlay = {
-        ...overlayStyle,
-        top: 0,
-        right: 0,
-        width: BORDER_SENSITIVITY,
-        height: `calc(100% - ${BORDER_SENSITIVITY}px)`,
-        cursor: 'ew-resize',
-    };
-    const bottomOverlay = {
-        ...overlayStyle,
-        left: 0,
-        bottom: 0,
-        width: `calc(100% - ${BORDER_SENSITIVITY}px)`,
-        height: BORDER_SENSITIVITY,
-        cursor: 'ns-resize',
-    };
-    const cornerOverlay = {
-        ...overlayStyle,
-        right: 0,
-        bottom: 0,
-        width: BORDER_SENSITIVITY,
-        height: BORDER_SENSITIVITY,
-        cursor: 'nwse-resize',
-    };
-
-    // --- Resizing logic ---
-    // [ANNOTATION: Resizing logic handlers below]
-    const onResizeStart = (e, dir) => {
-        e.preventDefault();
-        e.stopPropagation();
-        resizing.current = { x: e.clientX, y: e.clientY, dir, ...size };
-        window.addEventListener('mousemove', onResizeMove);
-        window.addEventListener('mouseup', onResizeEnd, { once: true });
-    };
-    const onResizeMove = (e) => {
-        if (!resizing.current) return;
-        let { x, y, dir, width, height } = resizing.current;
-        let newWidth = width, newHeight = height;
-        if (dir === 'right') newWidth = Math.max(MIN_WIDTH, width + (e.clientX - x));
-        if (dir === 'bottom') newHeight = Math.max(MIN_HEIGHT, height + (e.clientY - y));
-        if (dir === 'corner') {
-            newWidth = Math.max(MIN_WIDTH, width + (e.clientX - x));
-            newHeight = Math.max(MIN_HEIGHT, height + (e.clientY - y));
-        }
-        setSize({ width: newWidth, height: newHeight });
-    };
-    const onResizeEnd = () => {
-        resizing.current = null;
-        window.removeEventListener('mousemove', onResizeMove);
-    };
-
-    // --- Set cursor style dynamically ---
-    React.useEffect(() => {
-        if (!nodeRef.current) return;
-        let cursor = 'default';
-        if (resizing.current) {
-            if (resizing.current.dir === 'corner') cursor = 'nwse-resize';
-            else if (resizing.current.dir === 'right') cursor = 'ew-resize';
-            else if (resizing.current.dir === 'bottom') cursor = 'ns-resize';
-        }
-        nodeRef.current.style.cursor = cursor;
-    }, [resizeDir, resizing.current]);
 
     // Keyboard navigation for menu
     React.useEffect(() => {
@@ -136,7 +52,7 @@ function CustomNode({ data, selected }) {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [menuOpen, menuFocusIdx, menuItems.length]);
+    }, [menuOpen, menuFocusIdx, menuItems]);
 
     // --- Collapse/Expand logic ---
     // [ANNOTATION: Collapse/Expand handlers below]
@@ -155,9 +71,7 @@ function CustomNode({ data, selected }) {
     };
     const handleCollapse = () => {
         // Save current size before collapsing
-        const rectSize = nodeRef.current
-            ? { width: nodeRef.current.offsetWidth, height: nodeRef.current.offsetHeight }
-            : size;
+        const rectSize = size;
         setPrevSize(rectSize);
         setSize(rectSize);
         setCollapsed(true);
@@ -181,7 +95,7 @@ function CustomNode({ data, selected }) {
         if (hiddenLabelRef.current) {
             labelWidth = hiddenLabelRef.current.offsetWidth;
         }
-        circleDiameter = Math.max(circleDiameter, 48, labelWidth * 0.7 + 36); // heuristic
+        circleDiameter = Math.max(circleDiameter, 36, labelWidth * 0.7 + 36); // heuristic
         return (
             <div /* [ANNOTATION: Collapsed node wrapper] */ style={{
                 display: 'flex',
@@ -218,7 +132,6 @@ function CustomNode({ data, selected }) {
                 }}>{data?.label || 'Node'}</span>
                 {/* [ANNOTATION: Collapsed main circle node] */}
                 <div
-                    ref={nodeRef}
                     style={{
                         width: circleDiameter,
                         height: circleDiameter,
@@ -236,6 +149,7 @@ function CustomNode({ data, selected }) {
                         minHeight: 0,
                         padding: 0,
                         zIndex: 1,
+                        cursor: 'default', // Fix: show default pointer, not hand
                     }}
                     onDoubleClick={handleExpand}
                 >
@@ -259,7 +173,7 @@ function CustomNode({ data, selected }) {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            cursor: 'pointer',
+                            cursor: 'pointer', // Only the play button is clickable
                             boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
                             transition: 'background 0.15s',
                         }}
@@ -298,39 +212,39 @@ function CustomNode({ data, selected }) {
                 </div>
             )}
             <div
-                ref={nodeRef}
                 style={{
-                    width: collapsed ? 56 : size.width,
-                    height: collapsed ? 56 : (collapsed ? 56 : size.height),
+                    width: style?.width || '100%',
+                    height: style?.height || '100%',
                     background: '#f5f5f5',
-                    borderRadius: collapsed ? '50%' : 8,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+                    borderRadius: collapsed ? '50%' : borderRadius,
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
                     position: 'relative',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: collapsed ? 'center' : 'flex-start',
-                    overflow: 'visible', // changed from 'hidden' to 'visible' so edges/handles are not clipped
+                    overflow: 'visible',
                     border: selected ? '1px solid gray' : '1px solid #e0e0e0',
                     resize: 'none',
                     pointerEvents: 'auto',
                     transition: 'all 0.2s cubic-bezier(.4,2,.6,1)',
+                    cursor: 'default',
                 }}
                 onDoubleClick={!collapsed ? handleCollapse : undefined}
             >
                 {/* [ANNOTATION: Top nav bar in expanded state] */}
-                {!collapsed ? (
+                {!collapsed && !hideNavBar && (
                     <div
                         ref={navBarRef}
                         style={{
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            width: '100%', // Ensure navbar stretches to full width
+                            width: '100%',
                             padding: '4px 10px 4px 4px',
-                            borderBottom: '1px solid #e0e0e0',
+                            borderBottom: 'none', // transparent, no border
                             minHeight: 32,
-                            background: '#f8fafd',
+                            background: 'transparent', // transparent background
                             borderTopLeftRadius: 8,
                             borderTopRightRadius: 8,
                             position: 'relative',
@@ -369,7 +283,7 @@ function CustomNode({ data, selected }) {
                         {/* [ANNOTATION: Node label in nav bar] */}
                         <span style={{ fontWeight: 600, color: '#222', flex: 1 }}>{data?.label || 'Node'}</span>
                         {/* [ANNOTATION: Menu button and menu] */}
-                        <div style={{ position: 'relative' }}>
+                        <div style={{ position: 'relative', zIndex: 10 }}>
                             <button
                                 ref={menuButtonRef}
                                 onClick={() => setMenuOpen((v) => !v)}
@@ -386,6 +300,7 @@ function CustomNode({ data, selected }) {
                             >
                                 ☰
                             </button>
+                            {/* Ensure NodeMenu is always rendered when open, and zIndex is high */}
                             <NodeMenu
                                 menuItems={menuItems}
                                 open={menuOpen}
@@ -394,49 +309,15 @@ function CustomNode({ data, selected }) {
                             />
                         </div>
                     </div>
-                ) : (
-                    // [ANNOTATION: Play button in collapsed state, see above]
-                    <button
-                        onClick={() => alert('Run!')}
-                        onMouseEnter={() => setPlayHover(true)}
-                        onMouseLeave={() => setPlayHover(false)}
-                        onDoubleClick={e => e.stopPropagation()}
-                        style={{
-                            background: playHover ? '#ffa726' : 'none',
-                            border: 'none',
-                            color: 'inherit',
-                            borderRadius: '50%',
-                            width: 40,
-                            height: 40,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            margin: 0,
-                            padding: 0,
-                            fontWeight: 600,
-                            fontSize: 18,
-                            cursor: 'pointer',
-                        }}
-                        title="Run"
-                    >
-                        <svg width="28" height="28" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <polygon points="5,3 17,10 5,17" fill="gray" />
-                        </svg>
-                    </button>
                 )}
                 {/* [ANNOTATION: Main content area in expanded state] */}
                 {!collapsed && (
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 2 }}>
-                        {data?.content || 'Content'}
+                    <div style={{ flex: 1, width: '100%', height: '100%', display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', position: 'relative', zIndex: 2 }}>
+                        {children || data?.content || 'Content'}
                     </div>
                 )}
                 {/* [ANNOTATION: Handles in expanded state] */}
-                {!collapsed && edgesVisible && <Handle type="target" position={Position.Left} style={{ background: '#1976d2', width: 10, height: 10, borderRadius: 5, left: -11, top: '50%', transform: 'translateY(-50%)', zIndex: 10, pointerEvents: 'none' }} />}
-                {!collapsed && edgesVisible && <Handle type="source" position={Position.Right} style={{ background: '#1976d2', width: 10, height: 10, borderRadius: 5, right: -11, top: '50%', transform: 'translateY(-50%)', zIndex: 10, pointerEvents: 'none' }} />}
-                {/* [ANNOTATION: Resize overlays in expanded state] */}
-                {!collapsed && <div style={{ ...rightOverlay, background: 'rgba(255,0,0,0.08)' }} onMouseDown={e => onResizeStart(e, 'right')} />}
-                {!collapsed && <div style={{ ...bottomOverlay, background: 'rgba(0,255,0,0.08)' }} onMouseDown={e => onResizeStart(e, 'bottom')} />}
-                {!collapsed && <div style={{ ...cornerOverlay, background: 'rgba(0,0,255,0.12)' }} onMouseDown={e => onResizeStart(e, 'corner')} />}
+                {/* Handles removed from expanded state to avoid duplicate handles. Child nodes (like Prompt) should render their own handles. */}
             </div>
         </>
     );

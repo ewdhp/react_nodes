@@ -10,6 +10,7 @@ import AIAPISelector from "./AIAPISelector";
 import CustomNode from "./CustomNode";
 import NodeTypeMenu from './NodeTypeMenu';
 import LogPane from './LogPane';
+import MiniTerminal from "./MiniTerminal";
 
 const FlowComponent = () => {
   // --- State for nodes, edges, and React Flow instance ---
@@ -193,7 +194,8 @@ const FlowComponent = () => {
       position,
       type: typeKey,
       data: {
-        label: `${typeKey.charAt(0).toUpperCase() + typeKey.slice(1)} ${nodes.length + 1}`
+        label: `${typeKey.charAt(0).toUpperCase() +
+          typeKey.slice(1)} ${nodes.length + 1}`
       },
       draggable: true,
       sourcePosition: 'right',
@@ -203,7 +205,10 @@ const FlowComponent = () => {
     setNodes((nds) => {
       setTimeout(() => {
         if (reactFlowInstance.current) {
-          reactFlowInstance.current.setCenter(position.x + nodeWidth / 2, position.y + nodeHeight / 2, { zoom: 1.5, duration: 300 });
+          reactFlowInstance.current.setCenter
+            (position.x + nodeWidth / 2,
+              position.y + nodeHeight / 2,
+              { zoom: 1.5, duration: 300 });
         }
       }, 0);
       return nds.concat(newNode);
@@ -216,7 +221,8 @@ const FlowComponent = () => {
   useEffect(() => {
     const handleKeyDown = (event) => {
       const firstSelectedNodeId = selectedNodes[0];
-      const firstSelectedNode = nodes.find(n => n.id === firstSelectedNodeId);
+      const firstSelectedNode = nodes.find
+        (n => n.id === firstSelectedNodeId);
 
       if (event.ctrlKey && event.altKey && event.key === "r") {
         event.preventDefault();
@@ -359,7 +365,8 @@ const FlowComponent = () => {
           },
         ]);
       };
-      termObj.socket.addEventListener("message", handleMessage, { once: true });
+      termObj.socket.addEventListener
+        ("message", handleMessage, { once: true });
 
       termObj.socket.send(
         JSON.stringify({
@@ -428,10 +435,15 @@ const FlowComponent = () => {
 
   // --- nodeTypes with onNodeUpdate injected ---
   const nodeTypes = useMemo(() => ({
-    base: (props) => <CustomNode {...props} data={{ ...props.data, onNodeUpdate: (data) => onNodeUpdate(props.id, data) }} />, // inject onNodeUpdate
+    base: (props) => <CustomNode {...props}
+      data={{
+        ...props.data, onNodeUpdate:
+          (data) => onNodeUpdate(props.id, data)
+      }} />, // inject onNodeUpdate
     prompt: Prompt,
     editor: MonacoEditor,
     aiapiselector: AIAPISelector,
+    terminal: MiniTerminal, // Add Terminal as a node type
   }), [onNodeUpdate]);
 
   return (
@@ -544,7 +556,8 @@ const FlowComponent = () => {
           onCancel={() => setShowNodeTypeMenu(false)}
         />
       </div>
-      {/* Decoupled LogPane with mouse drag scroll, no visible scrollbar */}
+      {/* Decoupled LogPane with mouse drag scroll, 
+      no visible scrollbar */}
       <LogPane
         showLog={showLog}
         runCount={runCount}
@@ -554,6 +567,7 @@ const FlowComponent = () => {
         setCollapsedRuns={setCollapsedRuns}
         replayRun={replayRun}
       />
+
     </div>
   );
 };
