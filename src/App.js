@@ -1,16 +1,12 @@
 import React from "react";
-import FlowComponent from "./FlowComponent";
-import TerminalProvider from "./TerminalProvider";
-import TerminalContent from "./Terminal";
+import { ReactFlowProvider } from "reactflow";
+import ReactGraph from "./ReactGraph";
 function App() {
   return (
     <>
-
-
-      <TerminalProvider>
-        <FlowComponent />
-      </TerminalProvider>
-
+      <ReactFlowProvider>
+        <ReactGraph />
+      </ReactFlowProvider>
     </>
   );
 }
