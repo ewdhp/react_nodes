@@ -12,30 +12,43 @@ const initialNodes = [
   { id: "2", type: "baseNode", position: { x: 300, y: 200 }, data: { name: "Task 2" }, sourcePosition: "right", targetPosition: "left" },
 ];
 
-const initialEdges = [
-  { id: "e1-2", source: "1", target: "2", type: "default", animated: true }
-];
+const initialEdges = [];
 
 export default function ReactGraph() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
 
+  // Handles node movement
   const onNodesChange = useCallback((changes) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
+
+  // Handles edge updates (if style or connection updates occur)
   const onEdgesChange = useCallback((changes) => setEdges((eds) => eds.map((e) => ({ ...e, ...changes }))), []);
 
+  // Creates a new edge when connecting nodes
+  const onConnect = useCallback((connection) => {
+    setEdges((eds) => [...eds, { ...connection, id: `${connection.source}-${connection.target}`, animated: true }]);
+  }, []);
+
+  // Removes edge when clicked
+  const onEdgeClick = useCallback((event, edge) => {
+    setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+  }, []);
+
   return (
-    <div style={{ width: "100vw", height: "100vh" }}> {/* Ensure full-screen space */}
+    <div style={{ width: "100vw", height: "100vh" }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onEdgeClick={onEdgeClick} // Enable edge deletion on click
         fitView
       >
         <Controls />
         <Background color="#f0f0f0" gap={20} />
       </ReactFlow>
     </div>
-
   );
 }

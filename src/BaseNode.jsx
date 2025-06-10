@@ -58,8 +58,8 @@ const BaseNode = ({ data = {} }) => {
 // Wrapper component for managing edges
 const NodeWrapper = ({ children, onDoubleClick }) => (
     <div style={{ position: "relative", padding: "20px" }} onDoubleClick={onDoubleClick}>
-        <Handle type="source" position="right" style={{ right: "-15px" }} />
-        <Handle type="target" position="left" style={{ left: "-15px" }} />
+        <Handle type="source" position="right" style={{ right: "-15px", background: '#555' }} isConnectable={true} />
+        <Handle type="target" position="left" style={{ left: "-15px", background: '#555' }} isConnectable={true} />
         {children}
     </div>
 );
