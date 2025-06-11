@@ -152,8 +152,6 @@ export default function ReactGraph() {
   const [selectedNodes, setSelectedNodes] = useState([]);
   const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
-  const [renamingNodeId, setRenamingNodeId] = useState(null);
-  const [renameValue, setRenameValue] = useState("");
 
   // --- Hotkey handler ---
   useEffect(() => {
@@ -235,22 +233,7 @@ export default function ReactGraph() {
       // Deselect all
       if (e.key === "Escape") {
         setSelectedNodes([]);
-        setRenamingNodeId(null);
         return;
-      }
-      // Keyboard navigation (arrows)
-      if (selectedNodes.length === 1) {
-        const move = (dx, dy) => {
-          setNodes(nds => nds.map(n =>
-            selectedNodes.includes(n.id)
-              ? { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } }
-              : n
-          ));
-        };
-        if (e.key === "ArrowUp") { e.preventDefault(); move(0, -20); return; }
-        if (e.key === "ArrowDown") { e.preventDefault(); move(0, 20); return; }
-        if (e.key === "ArrowLeft") { e.preventDefault(); move(-20, 0); return; }
-        if (e.key === "ArrowRight") { e.preventDefault(); move(20, 0); return; }
       }
       // Show hotkeys modal: Ctrl + Alt + H
       if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "h") {
@@ -275,25 +258,15 @@ export default function ReactGraph() {
   }, []);
 
   // --- Right-click to rename node ---
+  // Remove renaming logic from here, now handled in Node component
   const onNodeContextMenu = useCallback((event, node) => {
     event.preventDefault();
-    setRenamingNodeId(node.id);
-    setRenameValue(node.data.label || "");
+    // No-op: Node handles its own renaming
   }, []);
 
   const onPaneClick = useCallback(() => {
     setSelectedNodes([]);
-    setRenamingNodeId(null);
   }, []);
-
-  const handleRenameInputChange = (e) => setRenameValue(e.target.value);
-  const handleRenameInputKeyDown = (e, nodeId) => {
-    if (e.key === "Enter") {
-      setNodes(nds => nds.map(n => n.id === nodeId ? { ...n, data: { ...n.data, label: renameValue } } : n));
-      setRenamingNodeId(null);
-    }
-    if (e.key === "Escape") setRenamingNodeId(null);
-  };
 
   return (
     <NodeUpdateContext.Provider value={onNodeUpdate}>
@@ -314,38 +287,6 @@ export default function ReactGraph() {
         >
           <Controls />
           <Background color="#f0f0f0" gap={20} />
-          {/* Inline rename input */}
-          {renamingNodeId && (() => {
-            const node = nodes.find(n => n.id === renamingNodeId);
-            if (!node) return null;
-            const { x, y } = node.position;
-            return (
-              <input
-                autoFocus
-                value={renameValue}
-                onChange={handleRenameInputChange}
-                onKeyDown={(e) => handleRenameInputKeyDown(e, node.id)}
-                onBlur={() => {
-                  setNodes(nds => nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, label: renameValue } } : n));
-                  setRenamingNodeId(null);
-                }}
-                style={{
-                  position: "absolute",
-                  left: x + 10,
-                  top: y + 30,
-                  width: "70px",
-                  fontSize: 14,
-                  borderRadius: 4,
-                  border: "1px solid #888",
-                  padding: "2px 6px",
-                  textAlign: "center",
-                  background: "#fff",
-                  zIndex: 100,
-                  pointerEvents: "auto"
-                }}
-              />
-            );
-          })()}
         </ReactFlow>
         {/* Node type selection menu */}
         {showNodeTypeMenu && (
@@ -356,39 +297,42 @@ export default function ReactGraph() {
             onCancel={() => setShowNodeTypeMenu(false)}
           />
         )}
-        {/* Hotkeys modal */}
-        <HotkeysModal open={showHotkeys} onClose={() => setShowHotkeys(false)} />
+        {/* Hotkeys overlay */}
+        {showHotkeys && (
+          <div
+            style={{
+              position: "fixed",
+              top: 24,
+              right: 24,
+              zIndex: 2000,
+              pointerEvents: "auto",
+              background: "rgba(255,255,255,0.85)",
+              borderRadius: 8,
+              padding: 32,
+              minWidth: 340,
+              boxShadow: "0 2px 16px #0002",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start"
+            }}
+            onClick={() => setShowHotkeys(false)}
+          >
+            <h2 style={{ marginTop: 0 }}>Keyboard Shortcuts</h2>
+            <ul style={{ lineHeight: 1.8, fontSize: 16, margin: 0, padding: 0, listStyle: 'none' }}>
+              <li><b>Ctrl + Alt + N</b>: New node menu</li>
+              <li><b>Delete</b>: Delete selected node(s)</li>
+              <li><b>Ctrl/Shift + Click</b>: Multi-select nodes</li>
+              <li><b>Escape</b>: Deselect all</li>
+              <li><b>Double-click node</b>: Rename node</li>
+              <li><b>Ctrl + Z</b>: Undo</li>
+              <li><b>Ctrl + Y</b>: Redo</li>
+              <li><b>Ctrl + S</b>: Save graph</li>
+              <li><b>Ctrl + O</b>: Load graph</li>
+              <li><b>Ctrl + Alt + H</b>: Show/hide this hotkeys panel</li>
+            </ul>
+          </div>
+        )}
       </div>
     </NodeUpdateContext.Provider>
-  );
-}
-
-function HotkeysModal({ open, onClose }) {
-  if (!open) return null;
-  return (
-    <div style={{
-      position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", zIndex: 2000,
-      background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center"
-    }} onClick={onClose}>
-      <div style={{
-        background: "#fff", borderRadius: 8, padding: 32, minWidth: 340, boxShadow: "0 2px 16px #0002",
-        position: "relative"
-      }} onClick={e => e.stopPropagation()}>
-        <h2 style={{ marginTop: 0 }}>Keyboard Shortcuts</h2>
-        <ul style={{ lineHeight: 1.8, fontSize: 16, margin: 0, padding: 0, listStyle: 'none' }}>
-          <li><b>Ctrl + Alt + N</b>: New node menu</li>
-          <li><b>Delete</b>: Delete selected node(s)</li>
-          <li><b>Ctrl/Shift + Click</b>: Multi-select nodes</li>
-          <li><b>Escape</b>: Deselect all</li>
-          <li><b>Double-click node</b>: Rename node</li>
-          <li><b>Ctrl + Z</b>: Undo</li>
-          <li><b>Ctrl + Y</b>: Redo</li>
-          <li><b>Ctrl + S</b>: Save graph</li>
-          <li><b>Ctrl + O</b>: Load graph</li>
-          <li><b>Ctrl + Alt + H</b>: Show/hide this hotkeys panel</li>
-        </ul>
-        <button style={{ position: 'absolute', top: 8, right: 12 }} onClick={onClose}>Close</button>
-      </div>
-    </div>
   );
 }
