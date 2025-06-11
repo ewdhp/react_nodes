@@ -6,19 +6,13 @@ import "reactflow/dist/style.css";
 import Node from "./Node";
 import { NodeUpdateContext } from "./NodeUpdateContext";
 
-
-// Node initialization
 const initialNodes = [];
 const initialEdges = [];
-
-
-
 
 export default function ReactGraph() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [showNodeTypeMenu, setShowNodeTypeMenu] = useState(false);
-  const [newNodePosition, setNewNodePosition] = useState({ x: 0, y: 0 });
   const [showHotkeys, setShowHotkeys] = useState(false);
   const reactFlowInstance = useRef(null);
 
@@ -67,7 +61,8 @@ export default function ReactGraph() {
     const nodeWidth = 360;
     const nodeHeight = 180;
     let position = { x: 0, y: 0 };
-    if (reactFlowInstance.current && reactFlowInstance.current.screenToFlowPosition) {
+    if (reactFlowInstance.current &&
+      reactFlowInstance.current.screenToFlowPosition) {
       const graphDiv = document.querySelector(".react-flow");
       if (graphDiv) {
         const rect = graphDiv.getBoundingClientRect();
@@ -75,7 +70,8 @@ export default function ReactGraph() {
           x: rect.left + rect.width / 2,
           y: rect.top + rect.height / 2,
         };
-        let centerFlow = reactFlowInstance.current.screenToFlowPosition(centerScreen);
+        let centerFlow = reactFlowInstance
+          .current.screenToFlowPosition(centerScreen);
         centerFlow.x -= nodeWidth / 2;
         centerFlow.y -= nodeHeight / 2;
         position = centerFlow;
@@ -86,7 +82,8 @@ export default function ReactGraph() {
       position,
       type: typeKey,
       data: {
-        label: `${typeKey.charAt(0).toUpperCase() + typeKey.slice(1)} ${nodes.length + 1}`,
+        label: `${typeKey.charAt(0).toUpperCase() +
+          typeKey.slice(1)} ${nodes.length + 1}`,
       },
       draggable: true,
       sourcePosition: "right",
@@ -96,10 +93,11 @@ export default function ReactGraph() {
     setNodes((nds) => {
       setTimeout(() => {
         if (reactFlowInstance.current) {
-          reactFlowInstance.current.setCenter(position.x + nodeWidth / 2, position.y + nodeHeight / 2, {
-            zoom: 1.5,
-            duration: 300,
-          });
+          reactFlowInstance.current.setCenter
+            (position.x + nodeWidth / 2, position.y + nodeHeight / 2, {
+              zoom: 1.5,
+              duration: 300,
+            });
         }
       }, 0);
       return nds.concat(newNode);
@@ -211,7 +209,8 @@ export default function ReactGraph() {
           const reader = new FileReader();
           reader.onload = (e) => {
             try {
-              const { nodes: n, edges: egs } = JSON.parse(e.target.result);
+              const { nodes: n, edges: egs } = JSON
+                .parse(e.target.result);
               setNodes(n);
               setEdges(egs);
             } catch { }
@@ -226,7 +225,8 @@ export default function ReactGraph() {
         e.preventDefault();
         setHistory(h => [...h, { nodes, edges }]);
         setNodes(nds => nds.filter(n => !selectedNodes.includes(n.id)));
-        setEdges(eds => eds.filter(e => !selectedNodes.includes(e.source) && !selectedNodes.includes(e.target)));
+        setEdges(eds => eds.filter(e => !selectedNodes.includes(e.source) &&
+          !selectedNodes.includes(e.target)));
         setSelectedNodes([]);
         return;
       }
@@ -264,6 +264,7 @@ export default function ReactGraph() {
     // No-op: Node handles its own renaming
   }, []);
 
+
   const onPaneClick = useCallback(() => {
     setSelectedNodes([]);
   }, []);
@@ -279,12 +280,11 @@ export default function ReactGraph() {
           nodeTypes={nodeTypes}
           onConnect={onConnect}
           onEdgeClick={onEdgeClick}
-          onInit={(instance) => (reactFlowInstance.current = instance)}
-          fitView
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           onNodeContextMenu={onNodeContextMenu}
-        >
+          onInit={(instance) => (reactFlowInstance.current = instance)}
+          fitView>
           <Controls />
           <Background color="#f0f0f0" gap={20} />
         </ReactFlow>
@@ -317,18 +317,25 @@ export default function ReactGraph() {
             }}
             onClick={() => setShowHotkeys(false)}
           >
-            <h2 style={{ marginTop: 0 }}>Keyboard Shortcuts</h2>
-            <ul style={{ lineHeight: 1.8, fontSize: 16, margin: 0, padding: 0, listStyle: 'none' }}>
+            <h2 style={{ marginTop: 0 }}>
+              Keyboard Shortcuts</h2>
+            <ul style={{
+              lineHeight: 1.8,
+              fontSize: 16,
+              margin: 0,
+              padding: 0,
+              listStyle: 'none'
+            }}>
               <li><b>Ctrl + Alt + N</b>: New node menu</li>
               <li><b>Delete</b>: Delete selected node(s)</li>
-              <li><b>Ctrl/Shift + Click</b>: Multi-select nodes</li>
+              <li><b>Ctrl/Shift + Click</b>: Multi-select</li>
               <li><b>Escape</b>: Deselect all</li>
               <li><b>Double-click node</b>: Rename node</li>
               <li><b>Ctrl + Z</b>: Undo</li>
               <li><b>Ctrl + Y</b>: Redo</li>
               <li><b>Ctrl + S</b>: Save graph</li>
               <li><b>Ctrl + O</b>: Load graph</li>
-              <li><b>Ctrl + Alt + H</b>: Show/hide this hotkeys panel</li>
+              <li><b>Ctrl + Alt + H</b>: Show/hide</li>
             </ul>
           </div>
         )}

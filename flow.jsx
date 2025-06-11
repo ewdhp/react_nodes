@@ -329,7 +329,11 @@ const FlowComponent = () => {
                     ? {
                         ...e,
                         animated: true,
-                        style: { ...e.style, stroke: "#2196f3", strokeWidth: 2 },
+                        style: {
+                            ...e.style,
+                            stroke: "#2196f3",
+                            strokeWidth: 2
+                        },
                     }
                     : e
             )
@@ -377,8 +381,9 @@ const FlowComponent = () => {
         }
 
         // Simulate execution time
-        const executionTime = Math.floor(Math.random() * 2000) + 500;
-        await new Promise((resolve) => setTimeout(resolve, executionTime));
+        const execT = Math
+            .floor(Math.random() * 2000) + 500;
+        await new Promise((r) => setTimeout(r, execT));
 
         // Remove highlight from node
         setNodes((nds) =>
@@ -403,7 +408,11 @@ const FlowComponent = () => {
                     ? {
                         ...e,
                         animated: false,
-                        style: { ...e.style, stroke: "#222", strokeWidth: 1 },
+                        style: {
+                            ...e.style,
+                            stroke: "#222",
+                            strokeWidth: 1
+                        },
                     }
                     : e
             )
@@ -422,13 +431,20 @@ const FlowComponent = () => {
     };
 
     // Use the first selected node for editor/terminal
-    const firstSelectedNode = nodes.find(n => n.id === selectedNodes[0]);
+    const firstSelectedNode = nodes.find
+        (n => n.id === selectedNodes[0]);
 
     // --- onNodeUpdate: update node data by id ---
     const onNodeUpdate = useCallback((id, newData) => {
         setNodes((nds) =>
             nds.map((n) =>
-                n.id === id ? { ...n, data: { ...n.data, ...newData } } : n
+                n.id === id ? {
+                    ...n,
+                    data: {
+                        ...n.data,
+                        ...newData
+                    }
+                } : n
             )
         );
     }, [setNodes]);
@@ -439,11 +455,11 @@ const FlowComponent = () => {
             data={{
                 ...props.data, onNodeUpdate:
                     (data) => onNodeUpdate(props.id, data)
-            }} />, // inject onNodeUpdate
+            }} />,
         prompt: Prompt,
         editor: MonacoEditor,
         aiapiselector: AIAPISelector,
-        terminal: MiniTerminal, // Add Terminal as a node type
+        terminal: MiniTerminal,
     }), [onNodeUpdate]);
 
     return (
@@ -455,7 +471,7 @@ const FlowComponent = () => {
                 position: "relative",
                 height: "100vh",
                 background: "#f8f8f8",
-                overflow: "hidden", // Prevent unwanted scrollbars
+                overflow: "hidden",
             }}>
                 <ReactFlowProvider>
                     <ReactFlow
@@ -463,27 +479,28 @@ const FlowComponent = () => {
                         edges={edges}
                         nodeTypes={nodeTypes}
                         onNodesChange={onNodesChange}
-                        onConnect={(params) =>
-                            setEdges((eds) =>
-                                addEdge(
-                                    {
-                                        ...params,
-                                        type: "straight",
-                                        sourcePosition: "right",
-                                        targetPosition: "left",
-                                    },
-                                    eds
-                                )
-                            )
-                        }
-                        onEdgesChange={onEdgesChange}
                         onEdgeClick={(event, edge) => onEdgesChange(edge)}
+                        onEdgesChange={onEdgesChange}
                         onNodeClick={onNodeClick}
                         onNodeContextMenu={handleNodeContextMenu}
                         onPaneClick={handlePaneClick}
+                        onInit={(instance) => (reactFlowInstance.current = instance)}
+                        onConnect={
+                            (params) =>
+                                setEdges((eds) =>
+                                    addEdge(
+                                        {
+                                            ...params,
+                                            type: "straight",
+                                            sourcePosition: "right",
+                                            targetPosition: "left",
+                                        },
+                                        eds
+                                    )
+                                )
+                        }
                         fitView
                         draggable
-                        onInit={(instance) => (reactFlowInstance.current = instance)}
                     >
                         <Background />
                     </ReactFlow>
@@ -557,7 +574,7 @@ const FlowComponent = () => {
                 />
             </div>
             {/* Decoupled LogPane with mouse drag scroll, 
-      no visible scrollbar */}
+                no visible scrollbar */}
             <LogPane
                 showLog={showLog}
                 runCount={runCount}

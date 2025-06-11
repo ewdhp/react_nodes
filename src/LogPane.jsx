@@ -12,7 +12,6 @@ const LogPane = ({
 }) => {
     const logContentRef = useRef(null);
 
-    // Handler for mouse drag scrolling
     useEffect(() => {
         const el = logContentRef.current;
         if (!el) return;
