@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import CustomNode from "./CustomNode";
+import Node from "./Node";
 
 const MiniTerminalContent = () => {
     const [history, setHistory] = useState([]);
@@ -62,7 +62,7 @@ const MiniTerminalContent = () => {
 
 // MiniTerminal node that uses CustomNode and injects MiniTerminalContent as content
 const MiniTerminal = (props) => {
-    return <CustomNode {...props} hideNavBar={true} data={{ ...props.data, content: <MiniTerminalContent /> }} />;
+    return <Node {...props} hideNavBar={true} data={{ ...props.data, content: <MiniTerminalContent /> }} />;
 };
 
 export const MiniTerminalNode = MiniTerminal;

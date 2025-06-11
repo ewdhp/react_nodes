@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-function NodeTypeMenu({ nodeTypes, onSelect, onCancel, open }) {
+function NodeTypeMenu({ nodeTypes, nodeTypeNames = {}, onSelect, onCancel, open }) {
     const [focusIdx, setFocusIdx] = useState(0);
     const menuRef = useRef();
     const keys = Object.keys(nodeTypes);
@@ -69,7 +69,7 @@ function NodeTypeMenu({ nodeTypes, onSelect, onCancel, open }) {
                     tabIndex={0}
                     onMouseEnter={() => setFocusIdx(idx)}
                 >
-                    {typeKey.charAt(0).toUpperCase() + typeKey.slice(1)}
+                    {nodeTypeNames[typeKey] || (typeKey.charAt(0).toUpperCase() + typeKey.slice(1))}
                 </button>
             ))}
             <button

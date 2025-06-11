@@ -10,7 +10,7 @@ const AI_API_OPTIONS = [
     // Add more APIs as needed
 ];
 
-const AIAPISelector = ({ value, onChange, style = {} }) => (
+const Selector = ({ value, onChange, style = {} }) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, position: "relative", ...style, border: "none" }}>
         {/* Left (target) handle */}
         <Handle type="target" position={Position.Left} style={{ background: "#2196f3", width: 12, height: 12, borderRadius: 6, left: -6, top: 32 }} />
@@ -40,4 +40,4 @@ const AIAPISelector = ({ value, onChange, style = {} }) => (
     </div>
 );
 
-export default AIAPISelector;
+export default Selector;
