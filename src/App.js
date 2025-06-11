@@ -1,12 +1,15 @@
 import React from "react";
 import { ReactFlowProvider } from "reactflow";
 import ReactGraph from "./ReactGraph";
+import TerminalProvider from "./TerminalProvider";
 function App() {
   return (
     <>
-      <ReactFlowProvider>
-        <ReactGraph />
-      </ReactFlowProvider>
+      <TerminalProvider>
+        <ReactFlowProvider>
+          <ReactGraph />
+        </ReactFlowProvider>
+      </TerminalProvider>
     </>
   );
 }

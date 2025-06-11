@@ -1,345 +1,571 @@
-import React, { useCallback, useState, useEffect, useRef, useMemo } from "react";
-import ReactFlow, { Controls, Background, applyNodeChanges } from "reactflow";
-import NodeTypeMenu from "./NodeTypeMenu";
-import MiniTerminal from "./MiniTerminal";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import ReactFlow, { addEdge, Background, ReactFlowProvider, applyNodeChanges, useNodesState } from "reactflow";
 import "reactflow/dist/style.css";
+import { useTerminalSocket } from "./TerminalProvider";
+import { Terminal } from "./Terminal";
 import Node from "./Node";
-import { NodeUpdateContext } from "./NodeUpdateContext";
+import NodeTypeMenu from './NodeTypeMenu';
+import LogPane from './LogPane';
+import MiniTerminal from "./MiniTerminal";
 
-const initialNodes = [];
-const initialEdges = [];
+const initialNodes = [
 
-export default function ReactGraph() {
-  const [nodes, setNodes] = useState(initialNodes);
-  const [edges, setEdges] = useState(initialEdges);
-  const [showNodeTypeMenu, setShowNodeTypeMenu] = useState(false);
-  const [showHotkeys, setShowHotkeys] = useState(false);
-  const reactFlowInstance = useRef(null);
+];
 
-  // Ctrl + Alt + N to open NodeTypeMenu
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.ctrlKey && e.altKey &&
-        e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        setShowNodeTypeMenu(true);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener
-      ("keydown", handleKeyDown);
-  }, []);
+const ReactGraph = () => {
+    // --- State for nodes, edges, and React Flow instance ---
+    const [nodes, setNodes] = useNodesState(initialNodes);
+    const [edges, setEdges] = useState([]);
+    const reactFlowInstance = useRef(null);
 
-  // Callback to update node data
-  const onNodeUpdate = useCallback(
-    (id, newData) => {
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === id
-            ? {
-              ...n,
-              data: {
-                ...n.data,
-                ...newData,
-              },
-            }
-            : n
-        )
-      );
-    },
-    [setNodes]
-  );
-  // --- nodeTypes with context pattern ---
-  const nodeTypes = useMemo(() => ({
-    base: Node,
-    terminal: MiniTerminal,
-  }), []);
+    // --- State for editor, terminal, and log visibility ---
+    const [showEditor, setShowEditor] = useState(false);
+    const [showTerminal, setShowTerminal] = useState(false);
+    const [showLog, setShowLog] = useState(false);
 
-  // Callback for NodeTypeMenu to add a new node
-  const handleAddNodeOfType = (typeKey) => {
-    const newId = `${+new Date()}`;
-    const nodeWidth = 360;
-    const nodeHeight = 180;
-    let position = { x: 0, y: 0 };
-    if (reactFlowInstance.current &&
-      reactFlowInstance.current.screenToFlowPosition) {
-      const graphDiv = document.querySelector(".react-flow");
-      if (graphDiv) {
-        const rect = graphDiv.getBoundingClientRect();
-        const centerScreen = {
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-        };
-        let centerFlow = reactFlowInstance
-          .current.screenToFlowPosition(centerScreen);
-        centerFlow.x -= nodeWidth / 2;
-        centerFlow.y -= nodeHeight / 2;
-        position = centerFlow;
-      }
-    }
-    const newNode = {
-      id: newId,
-      position,
-      type: typeKey,
-      data: {
-        label: `${typeKey.charAt(0).toUpperCase() +
-          typeKey.slice(1)} ${nodes.length + 1}`,
-      },
-      draggable: true,
-      sourcePosition: "right",
-      targetPosition: "left",
-      style: { minWidth: 120, minHeight: 80 },
-    };
-    setNodes((nds) => {
-      setTimeout(() => {
+    // --- State for selected nodes and output log ---
+    const [selectedNodes, setSelectedNodes] = useState([]);
+    const [outputLog, setOutputLog] = useState([]);
+
+    // --- State for run executions, renaming, node type menu, and new node position ---
+    // runExecutions: stores snapshots of nodes/edges for replay
+    // renamingNodeId/renameValue: for inline node renaming
+    // showNodeTypeMenu/newNodePosition: for node creation UI
+    const [runExecutions, setRunExecutions] = useState({}); // For replay
+    const [renamingNodeId, setRenamingNodeId] = useState(null);
+    const [renameValue, setRenameValue] = useState("");
+    const [showNodeTypeMenu, setShowNodeTypeMenu] = useState(false);
+    const [newNodePosition, setNewNodePosition] = useState({ x: 0, y: 0 });
+
+    const { createTerminal, getTerminal } = useTerminalSocket();
+    const [runCount, setRunCount] = useState(0);
+    const [currentRun, setCurrentRun] = useState(0);
+    const [collapsedRuns, setCollapsedRuns] = useState({});
+
+    useEffect(() => {
         if (reactFlowInstance.current) {
-          reactFlowInstance.current.setCenter
-            (position.x + nodeWidth / 2, position.y + nodeHeight / 2, {
-              zoom: 1.5,
-              duration: 300,
-            });
+            reactFlowInstance.current.fitView();
         }
-      }, 0);
-      return nds.concat(newNode);
-    });
-    setShowNodeTypeMenu(false);
-  };
+    }, []);
 
-  // Handles node movement
-  const onNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    []
-  );
-  // Handles edge updates
-  const onEdgesChange = useCallback(
-    (changes) => setEdges((eds) => eds.map((e) => ({ ...e, ...changes }))),
-    []
-  );
-  // Creates a new edge when connecting nodes
-  const onConnect = useCallback(
-    (connection) => {
-      setEdges((eds) => [
-        ...eds,
-        {
-          ...connection,
-          id: `${connection.source}-${connection.target}`,
-          animated: true,
-        },
-      ]);
-    },
-    []
-  );
-  // Removes edge when clicked
-  const onEdgeClick = useCallback(
-    (event, edge) => {
-      setEdges((eds) => eds.filter((e) => e.id !== edge.id));
-    },
-    []
-  );
+    // --- Utility: Check if there are any connected edges ---
+    // Returns true if there is at least one edge in the graph
+    const hasConnectedEdges = () => edges && edges.length > 0;
 
-  // --- Hotkeys and mouse features ---
-  // 1. Delete selected node(s) with Delete/Backspace
-  // 2. Delete edge with Delete/Backspace when selected
-  // 3. Multi-select nodes with Ctrl/Shift + click
-  // 4. Deselect all with Escape or canvas click
-  // 5. Undo/Redo (Ctrl+Z/Ctrl+Y)
-  // 6. Edit node label inline (double-click)
-  // 7. Keyboard navigation (arrow keys)
-  // 8. Save/Load (Ctrl+S/Ctrl+O)
-
-  const [selectedNodes, setSelectedNodes] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [future, setFuture] = useState([]);
-
-  // --- Hotkey handler ---
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Node creation
-      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        setShowNodeTypeMenu(true);
-        return;
-      }
-      // Undo
-      if (e.ctrlKey && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (history.length > 0) {
-          setFuture(f => [{ nodes, edges }, ...f]);
-          const prev = history[history.length - 1];
-          setNodes(prev.nodes);
-          setEdges(prev.edges);
-          setHistory(h => h.slice(0, -1));
+    // --- Node double click handler ---
+    // Removes the node from the graph on double click (left button)
+    const handleNodeDoubleClick = (event, node) => {
+        if (event.button === 0) { // Left double click
+            setNodes((nds) => nds.filter((n) => n.id !== node.id));
+            setSelectedNodes((prev) => prev.filter(id => id !== node.id));
         }
-        return;
-      }
-      // Redo
-      if (e.ctrlKey && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        if (future.length > 0) {
-          setHistory(h => [...h, { nodes, edges }]);
-          const next = future[0];
-          setNodes(next.nodes);
-          setEdges(next.edges);
-          setFuture(f => f.slice(1));
-        }
-        return;
-      }
-      // Save
-      if (e.ctrlKey && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        const data = JSON.stringify({ nodes, edges });
-        const blob = new Blob([data], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `graph-${Date.now()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        return;
-      }
-      // Load
-      if (e.ctrlKey && e.key.toLowerCase() === "o") {
-        e.preventDefault();
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json";
-        input.onchange = (event) => {
-          const file = event.target.files[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            try {
-              const { nodes: n, edges: egs } = JSON
-                .parse(e.target.result);
-              setNodes(n);
-              setEdges(egs);
-            } catch { }
-          };
-          reader.readAsText(file);
-        };
-        input.click();
-        return;
-      }
-      // Delete selected nodes/edges
-      if (e.key === "Delete" && selectedNodes.length > 0) {
-        e.preventDefault();
-        setHistory(h => [...h, { nodes, edges }]);
-        setNodes(nds => nds.filter(n => !selectedNodes.includes(n.id)));
-        setEdges(eds => eds.filter(e => !selectedNodes.includes(e.source) &&
-          !selectedNodes.includes(e.target)));
-        setSelectedNodes([]);
-        return;
-      }
-      // Deselect all
-      if (e.key === "Escape") {
-        setSelectedNodes([]);
-        return;
-      }
-      // Show hotkeys modal: Ctrl + Alt + H
-      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "h") {
-        e.preventDefault();
-        setShowHotkeys((v) => !v);
-        return;
-      }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [nodes, edges, selectedNodes, history, future]);
 
-  // --- Mouse: multi-select, deselect, inline rename ---
-  const onNodeClick = useCallback((event, node) => {
-    if (event.ctrlKey || event.metaKey || event.shiftKey) {
-      setSelectedNodes(prev => prev.includes(node.id)
-        ? prev.filter(id => id !== node.id)
-        : [...prev, node.id]);
-    } else {
-      setSelectedNodes([node.id]);
-    }
-  }, []);
+    // --- Node context menu handler ---
+    // Opens inline renaming input for the node
+    const handleNodeContextMenu = (event, node) => {
+        event.preventDefault();
+        setRenamingNodeId(node.id);
+        setRenameValue(node.data.label || "");
+    };
 
-  // --- Right-click to rename node ---
-  // Remove renaming logic from here, now handled in Node component
-  const onNodeContextMenu = useCallback((event, node) => {
-    event.preventDefault();
-    // No-op: Node handles its own renaming
-  }, []);
+    // --- Rename input change handler ---
+    // Updates the rename input value as the user types
+    const handleRenameInputChange = (e) => setRenameValue(e.target.value);
 
+    // --- Rename input keydown handler ---
+    // Commits or cancels renaming on Enter/Escape
+    const handleRenameInputKeyDown = (e, nodeId) => {
+        if (e.key === "Enter") {
+            setNodes((nds) =>
+                nds.map((n) =>
+                    n.id === nodeId ? {
+                        ...n, data:
+                            { ...n.data, label: renameValue }
+                    } : n
+                )
+            );
+            setRenamingNodeId(null);
+        }
+        if (e.key === "Escape") {
+            setRenamingNodeId(null);
+        }
+    };
 
-  const onPaneClick = useCallback(() => {
-    setSelectedNodes([]);
-  }, []);
+    // --- Flow execution handler ---
+    // Executes the graph from a start node, sequentially or in parallel
+    // - Increments run counters
+    // - Saves a snapshot of the graph for replay
+    // - Recursively executes nodes and their children
+    const executeFlow = useCallback((type, startNodeId) => {
+        // Increment run counter for each new flow execution
+        setRunCount((prev) => prev + 1);
+        setCurrentRun((prev) => prev + 1);
 
-  return (
-    <NodeUpdateContext.Provider value={onNodeUpdate}>
-      <div style={{ width: "100vw", height: "100vh" }}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          nodeTypes={nodeTypes}
-          onConnect={onConnect}
-          onEdgeClick={onEdgeClick}
-          onNodeClick={onNodeClick}
-          onPaneClick={onPaneClick}
-          onNodeContextMenu={onNodeContextMenu}
-          onInit={(instance) => (reactFlowInstance.current = instance)}
-          fitView>
-          <Controls />
-          <Background color="#f0f0f0" gap={20} />
-        </ReactFlow>
-        {/* Node type selection menu */}
-        {showNodeTypeMenu && (
-          <NodeTypeMenu
-            nodeTypes={nodeTypes}
-            open={showNodeTypeMenu}
-            onSelect={handleAddNodeOfType}
-            onCancel={() => setShowNodeTypeMenu(false)}
-          />
-        )}
-        {/* Hotkeys overlay */}
-        {showHotkeys && (
-          <div
-            style={{
-              position: "fixed",
-              top: 24,
-              right: 24,
-              zIndex: 2000,
-              pointerEvents: "auto",
-              background: "rgba(255,255,255,0.85)",
-              borderRadius: 8,
-              padding: 32,
-              minWidth: 340,
-              boxShadow: "0 2px 16px #0002",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-start"
-            }}
-            onClick={() => setShowHotkeys(false)}
-          >
-            <h2 style={{ marginTop: 0 }}>
-              Keyboard Shortcuts</h2>
-            <ul style={{
-              lineHeight: 1.8,
-              fontSize: 16,
-              margin: 0,
-              padding: 0,
-              listStyle: 'none'
+        // Save a snapshot of the nodes and edges for this run
+        setRunExecutions(prev => ({
+            ...prev,
+            [currentRun + 1]: {
+                startNodeId,
+                type,
+                nodes: JSON.parse(JSON.stringify(nodes)),
+                edges: JSON.parse(JSON.stringify(edges)),
+            }
+        }));
+
+        const nodeMap = new Map();
+        edges.forEach((edge) => {
+            if (!nodeMap.has(edge.source)) nodeMap.set(edge.source, []);
+            nodeMap.get(edge.source).push(edge.target);
+        });
+
+        const executeSequential = async (nodeId) => {
+            const node = nodes.find((n) => n.id === nodeId);
+            if (node) {
+                await executeNode(node, currentRun + 1);
+                for (const target of nodeMap.get(nodeId) || []) {
+                    await executeSequential(target);
+                }
+            }
+        };
+
+        const executeParallel = async (nodeId) => {
+            const node = nodes.find((n) => n.id === nodeId);
+            if (node) {
+                await executeNode(node, currentRun + 1);
+                await Promise.all((nodeMap.get(nodeId) || [])
+                    .map((target) => executeParallel(target)));
+            }
+        };
+
+        // Use the provided startNodeId or fallback to "1"
+        const startId = startNodeId || "1";
+        type === "sequential" ?
+            executeSequential(startId) : executeParallel(startId);
+    }, [edges, nodes, currentRun]);
+
+    // Replay logic
+    const replayRun = (runId) => {
+        const exec = runExecutions[runId];
+        if (!exec) return;
+        setNodes(exec.nodes);
+        setEdges(exec.edges);
+        executeFlow(exec.type, exec.startNodeId);
+    };
+
+    // Create new node and terminal on ctrl+alt+n
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if (event.ctrlKey && event.altKey && event.key === "n") {
+                event.preventDefault();
+                const position = {
+                    x: 100 + nodes.length * 40, y: 100 + nodes.length * 40
+                };
+                setNewNodePosition(position);
+                setShowNodeTypeMenu(true);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [nodes]);
+
+    const handleAddNodeOfType = (typeKey) => {
+        const newId = `${+new Date()}`;
+        let position = { x: 0, y: 0 };
+        if (reactFlowInstance.current) {
+            const container = document.querySelector('.react-flow');
+            if (container) {
+                const rect = container.getBoundingClientRect();
+                const centerScreen = {
+                    x: rect.width / 2,
+                    y: rect.height / 2,
+                };
+                position = {
+                    x: centerScreen.x,
+                    y: centerScreen.y,
+                };
+            }
+        }
+        const newNode = {
+            id: newId,
+            position,
+            type: typeKey,
+            data: {
+                label: `${typeKey.charAt(0).toUpperCase() +
+                    typeKey.slice(1)} ${nodes.length + 1}`
+            },
+        };
+        setNodes((nds) => nds.concat(newNode));
+        createTerminal(newId);
+        setShowNodeTypeMenu(false);
+    };
+
+    // Toggle terminal/editor and run flow
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            const firstSelectedNodeId = selectedNodes[0];
+            const firstSelectedNode = nodes.find
+                (n => n.id === firstSelectedNodeId);
+
+            if (event.ctrlKey && event.altKey && event.key === "r") {
+                event.preventDefault();
+                // Only run if there is at least one selected node
+                if (selectedNodes.length > 0) {
+                    // Use the first selected node's id as the starting point
+                    executeFlow("parallel", selectedNodes[0]);
+                } else if (nodes.length > 0) {
+                    // Fallback: run from the first node if nothing is selected
+                    executeFlow("parallel", nodes[0].id);
+                } else {
+                    console.log("No nodes to run.");
+                }
+            }
+
+            if (event.ctrlKey && event.altKey && event.key === "c") {
+                event.preventDefault();
+                if (!firstSelectedNode) {
+                    console.log("No node selected! Select a node first.");
+                    return;
+                }
+                setShowEditor((prev) => !prev);
+            }
+
+            if (event.ctrlKey && event.altKey && event.key === "t") {
+                event.preventDefault();
+                if (!firstSelectedNode) {
+                    console.log("No node selected! Select a node first.");
+                    return;
+                }
+                setShowTerminal((prev) => !prev);
+            }
+            if (event.ctrlKey && event.altKey && event.key === "l") {
+                event.preventDefault();
+                setShowLog((prev) => !prev);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [executeFlow, selectedNodes, nodes]);
+
+    const onNodesChange = useCallback((changes) => {
+        setNodes((nds) => applyNodeChanges(changes, nds));
+    }, []);
+
+    const onEdgesChange = (edgeToRemove) => {
+        setEdges((eds) => eds.filter((edge) => edge.id !== edgeToRemove.id));
+    };
+
+    // Multi-select logic
+    const onNodeClick = (event, node) => {
+        setSelectedNodes((prev) => {
+            // Ctrl or Shift for multi-select
+            if (event.ctrlKey || event.metaKey || event.shiftKey) {
+                if (prev.includes(node.id)) {
+                    // Deselect if already selected
+                    return prev.filter(id => id !== node.id);
+                } else {
+                    // Add to selection
+                    return [...prev, node.id];
+                }
+            } else {
+                // Single select
+                return [node.id];
+            }
+        });
+    };
+
+    // Highlight selected nodes in blue
+    useEffect(() => {
+        setNodes((nds) =>
+            nds.map((n) =>
+                selectedNodes.includes(n.id)
+                    ? { ...n, style: { ...n.style, border: "1px solid #2196f3" } }
+                    : { ...n, style: { ...n.style, border: "none" } }
+            )
+        );
+    }, [selectedNodes, setNodes]);
+
+    const executeNode = async (node, runId = currentRun) => {
+        // Always show the log pane when executing a node
+        setShowLog(true);
+
+        // Highlight node as running
+        setNodes((nds) =>
+            nds.map((n) =>
+                n.id === node.id
+                    ? {
+                        ...n,
+                        style: {
+                            ...n.style,
+                            border: "3px solid orange",
+                            animation: "pulse 1s infinite alternate",
+                        },
+                    }
+                    : n
+            )
+        );
+
+        // Animate outgoing edges
+        setEdges((eds) =>
+            eds.map((e) =>
+                e.source === node.id
+                    ? {
+                        ...e,
+                        animated: true,
+                        style: {
+                            ...e.style,
+                            stroke: "#2196f3",
+                            strokeWidth: 2
+                        },
+                    }
+                    : e
+            )
+        );
+
+        // Send Python script via SSH using python3 -c "<script>"
+        const termObj = getTerminal(node.id);
+        if (termObj && termObj.socket && node.data?.script) {
+            const command = node.data.script || "";
+
+            const handleMessage = (event) => {
+                let lines = event.data.split('\n');
+                // Remove echoed command if present
+                if (lines[0].trim() === command.trim()) {
+                    lines = lines.slice(1);
+                }
+                const cleanedOutput = lines
+                    .filter(line =>
+                        !/^[\x1b\[\]0-9;]*[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+:.*\$ ?$/
+                            .test(line.trim())
+                    )
+                    .join('\n')
+                    .replace(/\x1b\[[0-9;]*m/g, '')
+                    .replace(/\x1b\][^\x07]*\x07/g, '');
+
+                setOutputLog((prev) => [
+                    ...prev,
+                    {
+                        nodeId: node.id,
+                        output: cleanedOutput.trim(),
+                        time: new Date().toLocaleTimeString(),
+                        run: runId,
+                    },
+                ]);
+            };
+            termObj.socket.addEventListener
+                ("message", handleMessage, { once: true });
+
+            termObj.socket.send(
+                JSON.stringify({
+                    type: "command",
+                    command,
+                })
+            );
+        }
+
+        // Simulate execution time
+        const execT = Math
+            .floor(Math.random() * 2000) + 500;
+        await new Promise((r) => setTimeout(r, execT));
+
+        // Remove highlight from node
+        setNodes((nds) =>
+            nds.map((n) =>
+                n.id === node.id
+                    ? {
+                        ...n,
+                        style: {
+                            ...n.style,
+                            border: "none",
+                            animation: "none",
+                        },
+                    }
+                    : n
+            )
+        );
+
+        // Remove animation from outgoing edges
+        setEdges((eds) =>
+            eds.map((e) =>
+                e.source === node.id
+                    ? {
+                        ...e,
+                        animated: false,
+                        style: {
+                            ...e.style,
+                            stroke: "#222",
+                            strokeWidth: 1
+                        },
+                    }
+                    : e
+            )
+        );
+    };
+
+    // Deselect all on canvas click
+    const handlePaneClick = () => {
+        setSelectedNodes([]);
+        setNodes((nds) =>
+            nds.map((n) => ({
+                ...n,
+                style: { ...n.style, border: "none" }
+            }))
+        );
+    };
+
+    // Use the first selected node for editor/terminal
+    const firstSelectedNode = nodes.find
+        (n => n.id === selectedNodes[0]);
+
+    // --- onNodeUpdate: update node data by id ---
+    const onNodeUpdate = useCallback((id, newData) => {
+        setNodes((nds) =>
+            nds.map((n) =>
+                n.id === id ? {
+                    ...n,
+                    data: {
+                        ...n.data,
+                        ...newData
+                    }
+                } : n
+            )
+        );
+    }, [setNodes]);
+
+    // --- nodeTypes with onNodeUpdate injected ---
+    const nodeTypes = useMemo(() => ({
+        base: (props) => <Node {...props}
+            data={{
+                ...props.data, onNodeUpdate:
+                    (data) => onNodeUpdate(props.id, data)
+            }} />,
+    }), [onNodeUpdate]);
+
+    return (
+        <div style={{ display: "flex", height: "100vh" }}>
+            {/* Graph on the left */}
+            <div style={{
+                flex: 1,
+                minWidth: 0,
+                position: "relative",
+                height: "100vh",
+                background: "#f8f8f8",
+                overflow: "hidden",
             }}>
-              <li><b>Ctrl + Alt + N</b>: New node menu</li>
-              <li><b>Delete</b>: Delete selected node(s)</li>
-              <li><b>Ctrl/Shift + Click</b>: Multi-select</li>
-              <li><b>Escape</b>: Deselect all</li>
-              <li><b>Double-click node</b>: Rename node</li>
-              <li><b>Ctrl + Z</b>: Undo</li>
-              <li><b>Ctrl + Y</b>: Redo</li>
-              <li><b>Ctrl + S</b>: Save graph</li>
-              <li><b>Ctrl + O</b>: Load graph</li>
-              <li><b>Ctrl + Alt + H</b>: Show/hide</li>
-            </ul>
-          </div>
-        )}
-      </div>
-    </NodeUpdateContext.Provider>
-  );
-}
+                <ReactFlowProvider>
+                    <ReactFlow
+                        nodes={nodes}
+                        edges={edges}
+                        nodeTypes={nodeTypes}
+                        onNodesChange={onNodesChange}
+                        onEdgeClick={(event, edge) => onEdgesChange(edge)}
+                        onEdgesChange={onEdgesChange}
+                        onNodeClick={onNodeClick}
+                        onNodeContextMenu={handleNodeContextMenu}
+                        onPaneClick={handlePaneClick}
+                        onInit={(instance) => (reactFlowInstance.current = instance)}
+                        onConnect={
+                            (params) =>
+                                setEdges((eds) =>
+                                    addEdge(
+                                        {
+                                            ...params,
+                                            type: "straight",
+                                            sourcePosition: "right",
+                                            targetPosition: "left",
+                                        },
+                                        eds
+                                    )
+                                )
+                        }
+                        fitView
+                        draggable
+                    >
+                        <Background />
+                    </ReactFlow>
+                    {/* Overlay input for renaming */}
+                    {renamingNodeId && (() => {
+                        const node = nodes.find(n => n.id === renamingNodeId);
+                        if (!node) return null;
+                        const { x, y } = node.position;
+                        return (
+                            <input
+                                autoFocus
+                                value={renameValue}
+                                onChange={handleRenameInputChange}
+                                onKeyDown={(e) => handleRenameInputKeyDown(e, node.id)}
+                                onBlur={() => setRenamingNodeId(null)}
+                                style={{
+                                    position: "absolute",
+                                    left: x + 10, // adjust for centering
+                                    top: y + 30,  // adjust for centering
+                                    width: "70px",
+                                    fontSize: 14,
+                                    borderRadius: 4,
+                                    border: "1px solid #888",
+                                    padding: "2px 6px",
+                                    textAlign: "center",
+                                    background: "#fff",
+                                    zIndex: 100,
+                                    pointerEvents: "auto"
+                                }}
+                            />
+                        );
+                    })()}
+                </ReactFlowProvider>
+                {showEditor && firstSelectedNode?.data?.script && (
+                    <div style={{
+                        position: "absolute",
+                        top: "10%",
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        width: "64%",
+                        height: "78%",
+                        padding: "10px",
+                        border: "1px solid #ccc",
+                        boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.37)",
+                        background: "#fff",
+                        zIndex: 10,
+                    }}>
+
+                    </div>
+                )}
+                {showTerminal && firstSelectedNode && (
+                    <div style={{
+                        position: "absolute",
+                        bottom: 0,
+                        left: 0,
+                        width: "100%",
+                        height: "100%",
+                        background: "transparent",
+                        zIndex: 20,
+                        borderTop: "2px solid #333",
+                    }}>
+                        <Terminal terminalId={firstSelectedNode.id} />
+                    </div>
+                )}
+                {/* Node type selection menu */}
+                <NodeTypeMenu
+                    nodeTypes={nodeTypes}
+                    open={showNodeTypeMenu}
+                    onSelect={handleAddNodeOfType}
+                    onCancel={() => setShowNodeTypeMenu(false)}
+                />
+            </div>
+            {/* Decoupled LogPane with mouse drag scroll, 
+                no visible scrollbar */}
+            <LogPane
+                showLog={showLog}
+                runCount={runCount}
+                outputLog={outputLog}
+                runExecutions={runExecutions}
+                collapsedRuns={collapsedRuns}
+                setCollapsedRuns={setCollapsedRuns}
+                replayRun={replayRun}
+            />
+
+        </div>
+    );
+};
+
+export default ReactGraph;
