@@ -16,7 +16,7 @@ export default function ReactGraph() {
   const [edges, setEdges] = useState(initialEdges);
   const [showNodeTypeMenu, setShowNodeTypeMenu] = useState(false);
   const [showHotkeys, setShowHotkeys] = useState(false);
-  const [showLog, setShowLog] = useState(false);
+  const [showLog, setShowLog] = useState(true); // Show LogPane by default
   const [runCount, setRunCount] = useState(0);
   const [outputLog, setOutputLog] = useState([]);
   const [runExecutions, setRunExecutions] = useState({});
@@ -92,16 +92,18 @@ export default function ReactGraph() {
     let position = { x: 0, y: 0 };
     if (reactFlowInstance.current) {
       const container = document.querySelector('.react-flow');
+      const logPane = document.querySelector('.log-pane-root');
+      let logPaneWidth = 0;
+      if (logPane && logPane.offsetWidth) {
+        logPaneWidth = logPane.offsetWidth;
+      }
       if (container) {
         const rect = container.getBoundingClientRect();
-        const centerScreen = {
-          x: rect.width / 2,
-          y: rect.height / 2,
-        };
-        position = {
-          x: centerScreen.x,
-          y: centerScreen.y,
-        };
+        let x = rect.width / 2;
+        let y = rect.height / 2;
+        // Subtract half the log pane width from the x position
+        x = x - logPaneWidth / 2;
+        position = { x, y };
       }
     }
     const newNode = {
@@ -163,6 +165,29 @@ export default function ReactGraph() {
   const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
 
+  // Load graph from file (Ctrl+O or call directly)
+  const loadGraphFromFile = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const { nodes: n, edges: egs } = JSON.parse(e.target.result);
+          setNodes(n);
+          setEdges(egs);
+        } catch (err) {
+          alert("Invalid graph file.");
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, []);
+
   // --- Hotkey handler ---
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -212,24 +237,7 @@ export default function ReactGraph() {
       // Load
       if (e.ctrlKey && e.key.toLowerCase() === "o") {
         e.preventDefault();
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json";
-        input.onchange = (event) => {
-          const file = event.target.files[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            try {
-              const { nodes: n, edges: egs } = JSON
-                .parse(e.target.result);
-              setNodes(n);
-              setEdges(egs);
-            } catch { }
-          };
-          reader.readAsText(file);
-        };
-        input.click();
+        loadGraphFromFile();
         return;
       }
       // Delete selected nodes/edges
@@ -256,7 +264,7 @@ export default function ReactGraph() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [nodes, edges, selectedNodes, history, future]);
+  }, [nodes, edges, selectedNodes, history, future, loadGraphFromFile]);
 
   // --- Mouse: multi-select, deselect, inline rename ---
   const onNodeClick = useCallback((event, node) => {
@@ -286,6 +294,51 @@ export default function ReactGraph() {
     // ...existing code or leave as a stub...
   };
 
+  // Add this function to generate a star/circle graph
+  const generateCircleGraph = useCallback(() => {
+    const centerX = 400;
+    const centerY = 400;
+    const radius = 250;
+    const nodeCount = 10;
+    const newNodes = [];
+    const newEdges = [];
+
+    // Generate unique IDs to avoid collision
+    const timestamp = Date.now();
+    const centerId = `center-${timestamp}`;
+
+    // Center node
+    newNodes.push({
+      id: centerId,
+      position: { x: centerX, y: centerY },
+      type: 'base',
+      data: { label: 'Center' },
+    });
+
+    // Peripheral nodes and edges
+    for (let i = 0; i < nodeCount; i++) {
+      const angle = (2 * Math.PI * i) / nodeCount;
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+      const nodeId = `node${i + 1}-${timestamp}`;
+      newNodes.push({
+        id: nodeId,
+        position: { x, y },
+        type: 'base',
+        data: { label: `Node ${i + 1}` },
+      });
+      newEdges.push({
+        id: `${centerId}-${nodeId}`,
+        source: centerId,
+        target: nodeId,
+        animated: true,
+      });
+    }
+
+    setNodes(prev => [...prev, ...newNodes]);
+    setEdges(prev => [...prev, ...newEdges]);
+  }, [setNodes, setEdges]);
+
   return (
     <NodeUpdateContext.Provider value={onNodeUpdate}>
       <div style={{ display: "flex", height: "100vh" }}>
@@ -298,6 +351,25 @@ export default function ReactGraph() {
           background: "#f8f8f8",
           overflow: "hidden",
         }}>
+          {/* Add a button to generate the circle/star graph */}
+          <button
+            style={{
+              position: "absolute",
+              top: 16,
+              left: 16,
+              zIndex: 1001,
+              padding: "8px 16px",
+              borderRadius: 4,
+              border: "none",
+              background: "#00bcd4",
+              color: "#fff",
+              fontWeight: "bold",
+              cursor: "pointer"
+            }}
+            onClick={generateCircleGraph}
+          >
+            Generate Circle Graph
+          </button>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -316,12 +388,40 @@ export default function ReactGraph() {
           </ReactFlow>
           {/* Node type selection menu */}
           {showNodeTypeMenu && (
-            <NodeTypeMenu
-              nodeTypes={nodeTypes}
-              open={showNodeTypeMenu}
-              onSelect={handleAddNodeOfType}
-              onCancel={() => setShowNodeTypeMenu(false)}
-            />
+            <div
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                width: "100vw",
+                height: "100vh",
+                display: "flex",
+                alignItems: "center",
+                // justifyContent: "center", // Remove this
+                zIndex: 2001,
+                background: "rgba(0,0,0,0.15)",
+                // Shift overlay left by log pane width if present
+                right: (document.querySelector('.log-pane-root')?.offsetWidth || 0),
+                width: `calc(100vw - ${(document.querySelector('.log-pane-root')?.offsetWidth || 0)}px)`
+              }}
+            >
+              <div
+                style={{
+                  position: "fixed",
+                  top: "16%",
+                  left: "14%",
+                  transform: "translate(-50%, -50%)",
+                  zIndex: 2002,
+                }}
+              >
+                <NodeTypeMenu
+                  nodeTypes={nodeTypes}
+                  open={showNodeTypeMenu}
+                  onSelect={handleAddNodeOfType}
+                  onCancel={() => setShowNodeTypeMenu(false)}
+                />
+              </div>
+            </div>
           )}
           {/* Hotkeys overlay */}
           {showHotkeys && (

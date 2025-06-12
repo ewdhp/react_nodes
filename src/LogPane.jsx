@@ -56,7 +56,7 @@ const LogPane = ({
         <div
             style={{
                 position: "relative",
-                width: "35vw",
+                width: "35%",
                 height: "100vh",
                 background: "rgba(48, 48, 48, 0.95)", // changed to rgba gray
                 color: "#fff",

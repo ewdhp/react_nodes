@@ -35,10 +35,7 @@ function NodeTypeMenu({ nodeTypes, nodeTypeNames = {}, onSelect, onCancel, open 
         <div
             ref={menuRef}
             style={{
-                position: "fixed",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
+
                 background: "#fff",
                 border: "1px solid #2196f3",
                 borderRadius: 8,
