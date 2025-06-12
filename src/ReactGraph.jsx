@@ -20,15 +20,17 @@ const HighlightNode = (props) => {
   return (
     <div
       style={{
-        border: props.selected ? '2px solid #2196f3' : undefined,
+        // Reserve space for border so node size doesn't change when selected
+        border: '2px solid transparent',
         borderRadius: 6,
         boxSizing: 'border-box',
         background: '#fff',
-        // Prevent text selection on drag/select
         userSelect: 'none',
         MozUserSelect: 'none',
         WebkitUserSelect: 'none',
         msUserSelect: 'none',
+        // Only change border color when selected
+        borderColor: props.selected ? '#2196f3' : 'transparent',
       }}
     >
       <Node {...props} />
@@ -618,9 +620,6 @@ export default function ReactGraph() {
     );
   }, [selectedNodes, setNodes]);
 
-  // Make only selected nodes draggable
-  const nodeDraggable = useCallback((node) => selectedNodes.includes(node.id), [selectedNodes]);
-
   // Listen for node name changes and update the selected node's label in real time
   useEffect(() => {
     const handleNodeRename = (e) => {
@@ -706,7 +705,6 @@ export default function ReactGraph() {
                 {[
                   { key: "Vertical", label: "Vertical", fn: GraphStructures.Vertical },
                   { key: "Horizontal", label: "Horizontal", fn: GraphStructures.Horizontal },
-                  { key: "Circular", label: "Circular", fn: GraphStructures.Circular }
                 ].map((item, idx) => (
                   <li
                     key={item.key}
@@ -879,7 +877,7 @@ export default function ReactGraph() {
         {selectedNode && showEditor && (
           <div
             style={{
-              width: "40%",
+              width: "45%",
               height: "100%",
               background: "#fafbfc",
               borderLeft: "1px solid #e0e0e0",
