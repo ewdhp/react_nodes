@@ -34,12 +34,11 @@ export function CircleGraph({ setNodes, setEdges, nodes, edges }) {
         });
     }
     setNodes(prev => [
-        // Deselect all previous nodes
         ...prev.map(n => ({ ...n, selected: false })),
-        // Add new nodes, all selected
         ...newNodes.map(n => ({ ...n, selected: true }))
     ]);
     setEdges(prev => [...prev, ...newEdges]);
+    return newNodes.map(n => n.id);
 }
 
 // Matrix 4x4 grid
@@ -85,6 +84,7 @@ export function Matrix4x4({ setNodes, setEdges, nodes, edges }) {
         ...newNodes.map(n => ({ ...n, selected: true }))
     ]);
     setEdges(prev => [...prev, ...newEdges]);
+    return newNodes.map(n => n.id);
 }
 
 // Simple chain of 5 nodes
@@ -115,6 +115,7 @@ export function Chain5({ setNodes, setEdges, nodes, edges }) {
         ...newNodes.map(n => ({ ...n, selected: true }))
     ]);
     setEdges(prev => [...prev, ...newEdges]);
+    return newNodes.map(n => n.id);
 }
 
 // Star with 6 leaves
@@ -150,6 +151,7 @@ export function Star6({ setNodes, setEdges, nodes, edges }) {
         ...newNodes.map(n => ({ ...n, selected: true }))
     ]);
     setEdges(prev => [...prev, ...newEdges]);
+    return newNodes.map(n => n.id);
 }
 
 // Export as named functions

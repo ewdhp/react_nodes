@@ -367,12 +367,13 @@ export default function ReactGraph() {
           e.preventDefault();
           const key = structureKeys[structureMenuIndex];
           if (key && GraphStructures[key]) {
-            GraphStructures[key]({
+            const newIds = GraphStructures[key]({
               setNodes,
               setEdges,
               nodes,
               edges,
             });
+            setTimeout(() => selectNodesByIds(newIds), 0);
             setShowStructureMenu(false);
           }
           return;
@@ -502,10 +503,17 @@ export default function ReactGraph() {
         );
       });
       const selectedIds = selected.map(n => n.id);
-      selectNodesByIds(selectedIds);
+      // Update selected property for all nodes
+      setNodes(nds =>
+        nds.map(n => ({
+          ...n,
+          selected: selectedIds.includes(n.id),
+        }))
+      );
+      setSelectedNodes(selectedIds);
       console.log(`Selected nodes: ${selectedIds.join(', ')}`);
     }
-  }, [nodes, selectionRect, selectNodesByIds, handlePaneMouseMove]);
+  }, [nodes, selectionRect, handlePaneMouseMove]);
 
   // Mouse down on pane: start rectangle selection (only if Ctrl is pressed)
   const handlePaneMouseDown = useCallback((e) => {
@@ -545,19 +553,20 @@ export default function ReactGraph() {
   }, [isSelecting]);
 
 
+  // Handles node drag for multi-selection (improve smoothness)
   const handleNodeDrag = useCallback((event, node) => {
     // Only allow dragging if this node is selected
     if (!selectedNodes.includes(node.id)) {
       event.preventDefault?.();
       return;
     }
-    // Calculate the delta from the event
-    const deltaX = event.movementX;
-    const deltaY = event.movementY;
-    // Move all selected nodes together
-    setNodes(nds => {
-      // Only update positions for selected nodes
-      return nds.map(n =>
+    // Use the delta from React Flow's node drag event if available
+    // event.delta is available in React Flow >=11, fallback to movementX/Y
+    const deltaX = event?.delta?.x ?? event.movementX ?? 0;
+    const deltaY = event?.delta?.y ?? event.movementY ?? 0;
+    if (deltaX === 0 && deltaY === 0) return;
+    setNodes(nds =>
+      nds.map(n =>
         selectedNodes.includes(n.id)
           ? {
             ...n,
@@ -567,8 +576,8 @@ export default function ReactGraph() {
             },
           }
           : n
-      );
-    });
+      )
+    );
   }, [selectedNodes, setNodes]);
 
   // Make only selected nodes draggable
@@ -635,7 +644,8 @@ export default function ReactGraph() {
                     }}
                     onMouseEnter={() => setStructureMenuIndex(idx)}
                     onClick={() => {
-                      GraphStructures[key]({ setNodes, setEdges, nodes, edges });
+                      const newIds = GraphStructures[key]({ setNodes, setEdges, nodes, edges });
+                      setTimeout(() => selectNodesByIds(newIds), 0);
                       setShowStructureMenu(false);
                     }}
                   >
