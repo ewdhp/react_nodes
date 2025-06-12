@@ -11,6 +11,29 @@ const initialNodes = [
 ];
 const initialEdges = [];
 
+
+// --- Node wrapper to highlight selected nodes ---
+const HighlightNode = (props) => {
+  // props.selected is provided by React Flow
+  return (
+    <div
+      style={{
+        border: props.selected ? '2px solid #2196f3' : undefined,
+        borderRadius: 6,
+        boxSizing: 'border-box',
+        background: '#fff',
+        // Prevent text selection on drag/select
+        userSelect: 'none',
+        MozUserSelect: 'none',
+        WebkitUserSelect: 'none',
+        msUserSelect: 'none',
+      }}
+    >
+      <Node {...props} />
+    </div>
+  );
+};
+
 export default function ReactGraph() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
@@ -83,7 +106,7 @@ export default function ReactGraph() {
   );
   // --- nodeTypes with context pattern ---
   const nodeTypes = useMemo(() => ({
-    base: Node,
+    base: HighlightNode,
   }), []);
 
   // Callback for NodeTypeMenu to add a new node
@@ -261,21 +284,89 @@ export default function ReactGraph() {
         setShowHotkeys((v) => !v);
         return;
       }
+      // Copy selected nodes: Ctrl+Shift+C
+      if (
+        e.ctrlKey &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "c" &&
+        selectedNodes.length > 0
+      ) {
+        e.preventDefault();
+        // Deselect original nodes
+        setNodes(nds =>
+          nds.map(n => ({
+            ...n,
+            selected: false,
+          }))
+        );
+        // Copy nodes
+        setNodes(nds => {
+          const selected = nds.filter(n => selectedNodes.includes(n.id));
+          const idMap = {};
+          const timestamp = Date.now();
+          // Create new nodes with new IDs and offset positions
+          const newNodes = selected.map((n, idx) => {
+            const newId = `${n.id}-copy-${timestamp}-${idx}`;
+            idMap[n.id] = newId;
+            return {
+              ...n,
+              id: newId,
+              position: {
+                x: (n.position?.x || 0) + 40,
+                y: (n.position?.y || 0) + 40,
+              },
+              selected: true,
+            };
+          });
+          // Copy edges between selected nodes
+          const selectedEdges = edges.filter(
+            e =>
+              selectedNodes.includes(e.source) &&
+              selectedNodes.includes(e.target)
+          );
+          setEdges(eds => [
+            ...eds,
+            ...selectedEdges.map((e, idx) => ({
+              ...e,
+              id: `${e.id}-copy-${timestamp}-${idx}`,
+              source: idMap[e.source],
+              target: idMap[e.target],
+            })),
+          ]);
+          // Select new nodes
+          setSelectedNodes(newNodes.map(n => n.id));
+          return [...nds, ...newNodes];
+        });
+        return;
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [nodes, edges, selectedNodes, history, future, loadGraphFromFile]);
 
   // --- Mouse: multi-select, deselect, inline rename ---
-  const onNodeClick = useCallback((event, node) => {
-    if (event.ctrlKey || event.metaKey || event.shiftKey) {
-      setSelectedNodes(prev => prev.includes(node.id)
-        ? prev.filter(id => id !== node.id)
-        : [...prev, node.id]);
-    } else {
-      setSelectedNodes([node.id]);
-    }
+  // Use this callback for both click and rectangle selection to keep logic consistent
+  const selectNodesByIds = useCallback((ids) => {
+    setNodes(nds =>
+      nds.map(n => ({
+        ...n,
+        selected: ids.includes(n.id),
+      }))
+    );
+    setSelectedNodes(ids);
   }, []);
+
+  const onNodeClick = useCallback((event, node) => {
+    let newSelected;
+    if (event.ctrlKey || event.metaKey || event.shiftKey) {
+      newSelected = selectedNodes.includes(node.id)
+        ? selectedNodes.filter(id => id !== node.id)
+        : [...selectedNodes, node.id];
+    } else {
+      newSelected = [node.id];
+    }
+    selectNodesByIds(newSelected);
+  }, [selectedNodes, selectNodesByIds]);
 
   // --- Right-click to rename node ---
   // Remove renaming logic from here, now handled in Node component
@@ -294,7 +385,6 @@ export default function ReactGraph() {
     // ...existing code or leave as a stub...
   };
 
-  // Add this function to generate a star/circle graph
   const generateCircleGraph = useCallback(() => {
     const centerX = 400;
     const centerY = 400;
@@ -339,18 +429,181 @@ export default function ReactGraph() {
     setEdges(prev => [...prev, ...newEdges]);
   }, [setNodes, setEdges]);
 
+  // Rectangle selection state
+  const [selectionRect, setSelectionRect] = useState(null);
+  const selectionStart = useRef(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+
+  // Mouse move: update rectangle
+  const handlePaneMouseMove = useCallback((e) => {
+    if (!selectionStart.current) return;
+    const pane = document.querySelector('.react-flow__pane');
+    if (!pane) return;
+    // Prevent text selection while dragging
+    window.getSelection()?.removeAllRanges();
+    const rect = pane.getBoundingClientRect();
+    const startX = selectionStart.current.x;
+    const startY = selectionStart.current.y;
+    const currX = e.clientX - rect.left;
+    const currY = e.clientY - rect.top;
+    setSelectionRect({
+      x: Math.min(startX, currX),
+      y: Math.min(startY, currY),
+      width: Math.abs(currX - startX),
+      height: Math.abs(currY - startY),
+    });
+  }, []);
+
+  // Mouse up: select nodes in rectangle and stop growing rectangle
+  const handlePaneMouseUp = useCallback((e) => {
+    // Cache the current selectionRect before clearing it
+    let rect = selectionRect;
+    if (!rect) {
+      // Try to get the rectangle from the event if selectionRect is null
+      const pane = document.querySelector('.react-flow__pane');
+      if (pane && selectionStart.current) {
+        const paneRect = pane.getBoundingClientRect();
+        const currX = e.clientX - paneRect.left;
+        const currY = e.clientY - paneRect.top;
+        rect = {
+          x: Math.min(selectionStart.current.x, currX),
+          y: Math.min(selectionStart.current.y, currY),
+          width: Math.abs(currX - selectionStart.current.x),
+          height: Math.abs(currY - selectionStart.current.y),
+        };
+      }
+    }
+    setSelectionRect(null);
+    setIsSelecting(false);
+    selectionStart.current = null;
+    window.removeEventListener('mousemove', handlePaneMouseMove);
+    window.removeEventListener('mouseup', handlePaneMouseUp);
+    document.body.style.cursor = '';
+    // Find nodes inside rectangle and select them
+    if (rect) {
+      const selected = nodes.filter(n => {
+        const nodeWidth = n.width || 40;
+        const nodeHeight = n.height || 40;
+        const nodeLeft = n.position.x;
+        const nodeRight = n.position.x + nodeWidth;
+        const nodeTop = n.position.y;
+        const nodeBottom = n.position.y + nodeHeight;
+        const rectLeft = rect.x;
+        const rectRight = rect.x + rect.width;
+        const rectTop = rect.y;
+        const rectBottom = rect.y + rect.height;
+        return (
+          nodeLeft < rectRight &&
+          nodeRight > rectLeft &&
+          nodeTop < rectBottom &&
+          nodeBottom > rectTop
+        );
+      });
+      const selectedIds = selected.map(n => n.id);
+      selectNodesByIds(selectedIds);
+      console.log(`Selected nodes: ${selectedIds.join(', ')}`);
+    }
+  }, [nodes, selectionRect, selectNodesByIds, handlePaneMouseMove]);
+
+  // Mouse down on pane: start rectangle selection (only if Ctrl is pressed)
+  const handlePaneMouseDown = useCallback((e) => {
+    // Only left mouse button, Ctrl must be held, and not on input/textarea
+    if (
+      e.button === 0 &&
+      e.ctrlKey &&
+      e.target.classList.contains('react-flow__pane') &&
+      e.target.tagName !== 'INPUT' &&
+      e.target.tagName !== 'TEXTAREA'
+    ) {
+      const rect = e.target.getBoundingClientRect();
+      selectionStart.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+      setSelectionRect({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        width: 0,
+        height: 0,
+      });
+      setIsSelecting(true);
+      document.body.style.cursor = 'default';
+      window.addEventListener('mousemove', handlePaneMouseMove);
+      window.addEventListener('mouseup', handlePaneMouseUp);
+      // Prevent text selection on drag start
+      window.getSelection()?.removeAllRanges();
+    }
+  }, [handlePaneMouseMove, handlePaneMouseUp]);
+
+  // Reset cursor if selection is cancelled
+  useEffect(() => {
+    if (!isSelecting) {
+      document.body.style.cursor = '';
+    }
+  }, [isSelecting]);
+
+
+  const handleNodeDrag = useCallback((event, node) => {
+    // Only allow dragging if this node is selected
+    if (!selectedNodes.includes(node.id)) {
+      event.preventDefault?.();
+      return;
+    }
+    // Calculate the delta from the event
+    const deltaX = event.movementX;
+    const deltaY = event.movementY;
+    // Move all selected nodes together
+    setNodes(nds => {
+      // Only update positions for selected nodes
+      return nds.map(n =>
+        selectedNodes.includes(n.id)
+          ? {
+            ...n,
+            position: {
+              x: (n.position?.x || 0) + deltaX,
+              y: (n.position?.y || 0) + deltaY,
+            },
+          }
+          : n
+      );
+    });
+  }, [selectedNodes, setNodes]);
+
+  // Make only selected nodes draggable
+  const nodeDraggable = useCallback((node) => selectedNodes.includes(node.id), [selectedNodes]);
+
   return (
     <NodeUpdateContext.Provider value={onNodeUpdate}>
       <div style={{ display: "flex", height: "100vh" }}>
         {/* Graph on the left */}
-        <div style={{
-          flex: 1,
-          minWidth: 0,
-          position: "relative",
-          height: "100vh",
-          background: "#f8f8f8",
-          overflow: "hidden",
-        }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            position: "relative",
+            height: "100vh",
+            background: "#f8f8f8",
+            overflow: "hidden",
+            cursor: isSelecting ? 'default' : undefined
+          }}
+          onMouseDown={handlePaneMouseDown}
+        >
+          {/* Rectangle selection overlay */}
+          {selectionRect && (
+            <div
+              style={{
+                position: 'absolute',
+                left: selectionRect.x,
+                top: selectionRect.y,
+                width: selectionRect.width,
+                height: selectionRect.height,
+                border: '2px dashed #00bcd4',
+                background: 'rgba(0,188,212,0.08)',
+                zIndex: 2000,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
           {/* Add a button to generate the circle/star graph */}
           <button
             style={{
@@ -382,7 +635,9 @@ export default function ReactGraph() {
             onPaneClick={onPaneClick}
             onNodeContextMenu={onNodeContextMenu}
             onInit={(instance) => (reactFlowInstance.current = instance)}
-            fitView>
+            fitView
+            onNodeDrag={handleNodeDrag}
+          >
             <Controls />
             <Background color="#f0f0f0" gap={20} />
           </ReactFlow>
@@ -499,3 +754,12 @@ export default function ReactGraph() {
     </NodeUpdateContext.Provider>
   );
 }
+
+// selectedNodes is a state array of node IDs that are currently selected.
+// It is used for:
+// - Highlighting nodes with a blue border (via HighlightNode and React Flow's selected prop)
+// - Enabling multi-select (Ctrl/Shift + click or rectangle selection)
+// - Restricting dragging: only nodes in selectedNodes can be dragged together
+// - Deleting: pressing Delete removes all nodes in selectedNodes
+// - Deselecting: pressing Escape or clicking the pane clears selectedNodes
+// - Rectangle selection: after selection, all nodes under the rectangle are added to selectedNodes
