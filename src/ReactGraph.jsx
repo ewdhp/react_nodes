@@ -391,27 +391,26 @@ export default function ReactGraph() {
 
       // Structure menu navigation
       if (showStructureMenu) {
-        const structureKeys = Object.keys(GraphStructures);
+        const structureItems = [
+          { key: "Vertical", fn: GraphStructures.Vertical },
+          { key: "Horizontal", fn: GraphStructures.Horizontal },
+          { key: "Circular", fn: GraphStructures.Circular }
+        ];
         if (e.key === "ArrowDown") {
           e.preventDefault();
-          setStructureMenuIndex(i => (i + 1) % structureKeys.length);
+          setStructureMenuIndex(i => (i + 1) % structureItems.length);
           return;
         }
         if (e.key === "ArrowUp") {
           e.preventDefault();
-          setStructureMenuIndex(i => (i - 1 + structureKeys.length) % structureKeys.length);
+          setStructureMenuIndex(i => (i - 1 + structureItems.length) % structureItems.length);
           return;
         }
         if (e.key === "Enter") {
           e.preventDefault();
-          const key = structureKeys[structureMenuIndex];
-          if (key && GraphStructures[key]) {
-            const newIds = GraphStructures[key]({
-              setNodes,
-              setEdges,
-              nodes,
-              edges,
-            });
+          const item = structureItems[structureMenuIndex];
+          if (item && item.fn) {
+            const newIds = item.fn({ setNodes, setEdges, nodes, edges });
             setTimeout(() => selectNodesByIds(newIds), 0);
             setShowStructureMenu(false);
           }
@@ -703,28 +702,29 @@ export default function ReactGraph() {
                 flex: 1,
                 overflowY: "auto"
               }}>
-                {Object.keys(GraphStructures).map((key, idx) => (
+                {/* Explicitly define the structures and their order for correct keyboard navigation */}
+                {[
+                  { key: "Vertical", label: "Vertical", fn: GraphStructures.Vertical },
+                  { key: "Horizontal", label: "Horizontal", fn: GraphStructures.Horizontal },
+                  { key: "Circular", label: "Circular", fn: GraphStructures.Circular }
+                ].map((item, idx) => (
                   <li
-                    key={key}
+                    key={item.key}
                     style={{
                       padding: "14px 28px",
-                      background: idx === structureMenuIndex ? "#e3f2fd" : undefined,
-                      color: idx === structureMenuIndex ? "#1976d2" : "#222",
-                      fontWeight: idx === structureMenuIndex ? "bold" : "normal",
+                      background: structureMenuIndex === idx ? "#e3f2fd" : undefined,
+                      color: structureMenuIndex === idx ? "#1976d2" : "#222",
+                      fontWeight: structureMenuIndex === idx ? "bold" : "normal",
                       cursor: "pointer"
                     }}
                     onMouseEnter={() => setStructureMenuIndex(idx)}
                     onClick={() => {
-                      const newIds = GraphStructures[key]({ setNodes, setEdges, nodes, edges });
+                      const newIds = item.fn({ setNodes, setEdges, nodes, edges });
                       setTimeout(() => selectNodesByIds(newIds), 0);
                       setShowStructureMenu(false);
                     }}
                   >
-                    {key === "ThreeVerticalChains"
-                      ? "Vertical"
-                      : key === "ThreeHorizontalChain"
-                        ? "3 Horizontal"
-                        : key}
+                    {item.label}
                   </li>
                 ))}
               </ul>
@@ -941,12 +941,3 @@ export default function ReactGraph() {
     </NodeUpdateContext.Provider>
   );
 }
-
-// selectedNodes is a state array of node IDs that are currently selected.
-// It is used for:
-// - Highlighting nodes with a blue border (via HighlightNode and React Flow's selected prop)
-// - Enabling multi-select (Ctrl/Shift + click or rectangle selection)
-// - Restricting dragging: only nodes in selectedNodes can be dragged together
-// - Deleting: pressing Delete removes all nodes in selectedNodes
-// - Deselecting: pressing Escape or clicking the pane clears selectedNodes
-// - Rectangle selection: after selection, all nodes under the rectangle are added to selectedNodes
