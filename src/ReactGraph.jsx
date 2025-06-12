@@ -1,11 +1,10 @@
-import React, { useCallback, useState, useEffect, useRef, useMemo } from "react";
+import React, { useCallback, useState, useEffect, useRef } from "react";
 import ReactFlow, { Controls, Background, applyNodeChanges } from "reactflow";
 import NodeTypeMenu from "./NodeTypeMenu";
 import "reactflow/dist/style.css";
 import Node from "./Node";
 import { NodeUpdateContext } from "./NodeUpdateContext";
 import LogPane from "./LogPane";
-import TerminalTabs from './Terminal'; // adjust path if needed
 import * as GraphStructures from "./GraphStructures";
 import MonacoEditor from "@monaco-editor/react";
 
@@ -38,6 +37,11 @@ const HighlightNode = (props) => {
   );
 };
 
+// Memoize nodeTypes outside the component to avoid React Flow warning
+const nodeTypes = {
+  base: HighlightNode,
+};
+
 export default function ReactGraph() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
@@ -48,7 +52,6 @@ export default function ReactGraph() {
   const [outputLog, setOutputLog] = useState([]);
   const [runExecutions, setRunExecutions] = useState({});
   const [collapsedRuns, setCollapsedRuns] = useState({});
-  const [showTerminal, setShowTerminal] = useState(false);
   const [showStructureMenu, setShowStructureMenu] = useState(false);
   const [structureMenuIndex, setStructureMenuIndex] = useState(0);
   const [showEditor, setShowEditor] = useState(true);
@@ -78,18 +81,6 @@ export default function ReactGraph() {
     };
     window.addEventListener("keydown", handleLogPaneToggle);
     return () => window.removeEventListener("keydown", handleLogPaneToggle);
-  }, []);
-
-  // Toggle TerminalTabs visibility with Ctrl+Alt+T
-  useEffect(() => {
-    const handleTerminalToggle = (e) => {
-      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 't') {
-        e.preventDefault();
-        setShowTerminal((prev) => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleTerminalToggle);
-    return () => window.removeEventListener('keydown', handleTerminalToggle);
   }, []);
 
   // Toggle Monaco Editor Pane with Ctrl+Alt+C
@@ -131,9 +122,9 @@ export default function ReactGraph() {
     [setNodes]
   );
   // --- nodeTypes with context pattern ---
-  const nodeTypes = useMemo(() => ({
-    base: HighlightNode,
-  }), []);
+  // const nodeTypes = useMemo(() => ({
+  //   base: HighlightNode,
+  // }), []);
 
   // Utility: generate a unique node id with type and number
   const generateNodeId = useCallback((typeKey, nodeNumber) => {
@@ -854,13 +845,13 @@ export default function ReactGraph() {
             </div>
           )}
           {/* Terminal tabs overlay */}
-          {showTerminal && (
+          {/* {showTerminal && (
             <div
               style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
-                width: '100vw',
+                width: '50%',
                 height: '100vh',
                 zIndex: 9999,
                 background: 'rgba(20,20,20,0.97)',
@@ -871,13 +862,13 @@ export default function ReactGraph() {
             >
               <TerminalTabs />
             </div>
-          )}
+          )} */}
         </div>
         {/* Monaco Editor Pane for selected node */}
         {selectedNode && showEditor && (
           <div
             style={{
-              width: "45%",
+              width: "50%",
               height: "100%",
               background: "#fafbfc",
               borderLeft: "1px solid #e0e0e0",

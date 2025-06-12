@@ -5,8 +5,8 @@ function uniqueId(prefix = "node") {
 
 // Add a structure: single vertical chain of 3 nodes, with vertical edges (top-bottom)
 export function Vertical({ setNodes, setEdges, nodes, edges }) {
-    const baseX = 200;
-    const baseY = 100;
+    const baseX = 0;
+    const baseY = 0;
     const spacingY = 120;
     const chainLength = 3;
 
