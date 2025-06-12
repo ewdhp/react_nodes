@@ -134,7 +134,6 @@ const Node = ({ data = {}, id, selected, setNodes }) => {
                                 boxShadow: 'none',
                                 minWidth: 0,
                                 width: 'auto',
-
                                 whiteSpace: 'pre-line',
                                 padding: 0,
                                 display: 'flex',
@@ -142,28 +141,8 @@ const Node = ({ data = {}, id, selected, setNodes }) => {
                                 alignItems: 'center',
                             }}
                         >
-                            {data.content ? data.content : (
-                                <textarea
-                                    className="custom-textarea"
-                                    rows={3}
-                                    autoFocus
-                                    style={{
-                                        width: `${renameValue.length + 1}ch`,
-                                        minWidth: '20ch',
-                                        maxWidth: '40ch',
-                                        border: '1px solid #555',
-                                        borderRadius: 4,
-                                        padding: '2px 6px',
-                                        resize: 'vertical',
-                                        fontSize: 10,
-                                        background: '#fff',
-                                        boxSizing: 'border-box',
-                                        margin: 0,
-                                        lineHeight: 1.4,
-                                        outline: 'none',
-                                    }}
-                                />
-                            )}
+                            {/* Remove textarea and only show data.content if present */}
+                            {data.content ? data.content : null}
                         </div>
                     )}
                 </div>

@@ -1,7 +1,4 @@
 import React, { createContext, useContext, useRef } from 'react';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import 'xterm/css/xterm.css';
 
 // Create Context
 const TerminalContext = createContext();
@@ -9,6 +6,7 @@ const TerminalContext = createContext();
 // Provider Component
 export const TerminalProvider = ({ children }) => {
     const terminals = useRef(new Map());
+    const outputListeners = useRef(new Map());
 
     const createTerminal = (id) => {
         if (terminals.current.has(id)) {
@@ -18,27 +16,14 @@ export const TerminalProvider = ({ children }) => {
 
         console.log(`Creating terminal with ID "${id}"...`);
 
-        const terminal = new Terminal({
-            cursorBlink: true,
-            fontSize: 16,
-            theme: {
-                background: '#222222',
-                foreground: 'white',
-                cursor: '#ffffff',
-            },
-        });
-        const fitAddon = new FitAddon();
-        terminal.loadAddon(fitAddon);
-
         const socket = new WebSocket('wss://localhost:5500');
         const inputBuffer = { current: '' };
 
-        // Save fitAddon for later use
-        terminals.current.set(id, { terminal, socket, inputBuffer, fitAddon });
+        terminals.current.set(id, { socket, inputBuffer });
 
         socket.onopen = () => {
             console.log(`WebSocket connection established for terminal "${id}"`);
-            terminal.writeln('Connected to WebSocket server');
+            sendToListeners(id, 'Connected to WebSocket server\n');
             socket.send(
                 JSON.stringify({
                     type: 'connect',
@@ -47,73 +32,87 @@ export const TerminalProvider = ({ children }) => {
                     password: '2020',
                 })
             );
-            terminal.write('\r\n> ');
-            terminal.focus();
-
-            terminal.onData((data) => {
-                if (data === '\r') {
-                    const sanitizedCommand = inputBuffer.current.trim();
-                    if (sanitizedCommand !== '') {
-                        socket.send(
-                            JSON.stringify({
-                                type: 'command',
-                                command: sanitizedCommand,
-                            })
-                        );
-                        inputBuffer.current = '';
-                    }
-                    terminal.write('\r\n> ');
-                } else if (data === '\u007F') {
-                    if (inputBuffer.current.length > 0) {
-                        inputBuffer.current = inputBuffer.current.slice(0, -1);
-                        terminal.write('\b \b');
-                    }
-                } else {
-                    inputBuffer.current += data;
-                    terminal.write(data);
-                }
-            });
+            sendToListeners(id, '\n> ');
         };
 
         socket.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
+
                 switch (msg.type) {
                     case 'output':
-                        terminal.write(msg.data);
+                        sendToListeners(id, msg.data);
                         break;
                     case 'connected':
-                        terminal.writeln('\r\n[SSH CONNECTED]');
-                        terminal.write('\r\n> ');
+                        sendToListeners(id, '\n[SSH CONNECTED]\n> ');
                         break;
                     case 'disconnected':
-                        terminal.writeln('\r\n[SSH DISCONNECTED]');
+                        sendToListeners(id, '\n[SSH DISCONNECTED]');
                         break;
                     case 'error':
-                        terminal.writeln(`\r\n[ERROR]: ${msg.message}`);
+                        sendToListeners(id, `\n[ERROR]: ${msg.message}`);
                         break;
                     case 'status':
-                        terminal.writeln(`\r\n[STATUS]: ${msg.message}`);
+                        sendToListeners(id, `\n[STATUS]: ${msg.message}`);
                         break;
                     default:
-                        terminal.write(event.data);
+                        sendToListeners(id, event.data);
                         break;
                 }
             } catch (e) {
-                terminal.write(event.data);
+                sendToListeners(id, event.data);
             }
         };
 
         socket.onerror = (error) => {
             console.error(`WebSocket error for terminal "${id}":`, error);
+            sendToListeners(id, `[WebSocket error]\n`);
         };
 
         socket.onclose = () => {
             console.log(`WebSocket connection closed for terminal "${id}"`);
-            terminal.writeln('[WebSocket Closed]');
+            sendToListeners(id, '[WebSocket Closed]');
         };
 
-        return { terminal, socket, fitAddon };
+        return { socket, inputBuffer };
+    };
+
+    const sendToListeners = (id, data) => {
+        const listeners = outputListeners.current.get(id);
+        if (listeners) {
+            listeners.forEach((cb) => cb(data));
+        }
+    };
+
+    // Send input to the server for a terminal
+    const sendInput = (id, input) => {
+        const terminalData = terminals.current.get(id);
+        if (!terminalData) return;
+        const { socket } = terminalData;
+        console.log(`Sending input to terminal "${id}":`, input);
+        if (input.trim() === '') return;
+        socket.send(
+            JSON.stringify({
+                type: 'command',
+                command: input.trim(),
+            })
+        );
+    };
+
+    // Subscribe to output for a terminal
+    const subscribeToOutput = (id, callback) => {
+        if (!outputListeners.current.has(id)) {
+            outputListeners.current.set(id, []);
+        }
+        outputListeners.current.get(id).push(callback);
+        // Return unsubscribe function
+        return () => {
+            const arr = outputListeners.current.get(id) || [];
+            outputListeners.current.set(
+                id,
+                arr.filter((cb) => cb !== callback)
+            );
+        };
     };
 
     const getTerminal = (id) => {
@@ -128,9 +127,9 @@ export const TerminalProvider = ({ children }) => {
         const terminalData = terminals.current.get(id);
         if (terminalData) {
             console.log(`Disposing terminal with ID "${id}"...`);
-            terminalData.terminal.dispose();
             terminalData.socket.close();
             terminals.current.delete(id);
+            outputListeners.current.delete(id);
         } else {
             console.warn(`Terminal with ID "${id}" does not exist.`);
         }
@@ -143,6 +142,8 @@ export const TerminalProvider = ({ children }) => {
                 getTerminal,
                 getAllTerminals,
                 disposeTerminal,
+                sendInput,
+                subscribeToOutput,
             }}
         >
             {children}
