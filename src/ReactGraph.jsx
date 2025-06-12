@@ -7,6 +7,7 @@ import { NodeUpdateContext } from "./NodeUpdateContext";
 import LogPane from "./LogPane";
 import TerminalTabs from './Terminal'; // adjust path if needed
 import * as GraphStructures from "./GraphStructures";
+import MonacoEditor from "@monaco-editor/react";
 
 const initialNodes = [
 ];
@@ -48,6 +49,7 @@ export default function ReactGraph() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [showStructureMenu, setShowStructureMenu] = useState(false);
   const [structureMenuIndex, setStructureMenuIndex] = useState(0);
+  const [showEditor, setShowEditor] = useState(true);
   const reactFlowInstance = useRef(null);
 
   // Ctrl + Alt + N to open NodeTypeMenu
@@ -88,21 +90,40 @@ export default function ReactGraph() {
     return () => window.removeEventListener('keydown', handleTerminalToggle);
   }, []);
 
+  // Toggle Monaco Editor Pane with Ctrl+Alt+C
+  useEffect(() => {
+    const handleEditorToggle = (e) => {
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        setShowEditor((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handleEditorToggle);
+    return () => window.removeEventListener("keydown", handleEditorToggle);
+  }, []);
+
   // Callback to update node data
   const onNodeUpdate = useCallback(
     (id, newData) => {
       setNodes((nds) =>
-        nds.map((n) =>
-          n.id === id
-            ? {
-              ...n,
-              data: {
-                ...n.data,
-                ...newData,
-              },
+        nds.map((n) => {
+          if (n.id === id) {
+            let updatedData = { ...n.data, ...newData };
+            // If name is changed, also update label to match
+            if (newData.name !== undefined) {
+              updatedData.label = newData.name;
             }
-            : n
-        )
+            // If label is changed, also update name to match (keep them in sync both ways)
+            if (newData.label !== undefined) {
+              updatedData.name = newData.label;
+            }
+            return {
+              ...n,
+              data: updatedData,
+            };
+          }
+          return n;
+        })
       );
     },
     [setNodes]
@@ -112,9 +133,26 @@ export default function ReactGraph() {
     base: HighlightNode,
   }), []);
 
+  // Utility: generate a unique node id with type and number
+  const generateNodeId = useCallback((typeKey, nodeNumber) => {
+    return `${typeKey.toLowerCase()}-${nodeNumber}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  }, []);
+
+  // Utility: get the next sequential node number for a given type
+  const getNextNodeNumber = useCallback((typeKey) => {
+    const typeLabel = typeKey.charAt(0).toUpperCase() + typeKey.slice(1);
+    const count = nodes.filter(
+      n => (n.type === typeKey) ||
+        (n.data?.label && n.data.label.startsWith(typeLabel))
+    ).length;
+    return count + 1;
+  }, [nodes]);
+
   // Callback for NodeTypeMenu to add a new node
   const handleAddNodeOfType = (typeKey) => {
-    const newId = `${+new Date()}`;
+    const nodeNumber = getNextNodeNumber(typeKey);
+    const nodeLabel = `${typeKey.charAt(0).toUpperCase() + typeKey.slice(1)} ${nodeNumber}`;
+    const newId = generateNodeId(typeKey, nodeNumber);
     let position = { x: 0, y: 0 };
     if (reactFlowInstance.current) {
       const container = document.querySelector('.react-flow');
@@ -137,8 +175,9 @@ export default function ReactGraph() {
       position,
       type: typeKey,
       data: {
-        label: `${typeKey.charAt(0).toUpperCase() +
-          typeKey.slice(1)} ${nodes.length + 1}`
+        label: nodeLabel,
+        name: nodeLabel, // ensure both label and name are set
+        nodeId: newId    // store the generated id in data as well
       },
     };
     setNodes((nds) => nds.concat(newNode));
@@ -583,6 +622,38 @@ export default function ReactGraph() {
   // Make only selected nodes draggable
   const nodeDraggable = useCallback((node) => selectedNodes.includes(node.id), [selectedNodes]);
 
+  // Listen for node name changes and update the selected node's label in real time
+  useEffect(() => {
+    const handleNodeRename = (e) => {
+      const { id, name } = e.detail;
+      setNodes(nds =>
+        nds.map(n =>
+          n.id === id
+            ? { ...n, data: { ...n.data, label: name, name } }
+            : n
+        )
+      );
+    };
+    window.addEventListener("node-rename", handleNodeRename);
+    return () => window.removeEventListener("node-rename", handleNodeRename);
+  }, [setNodes]);
+
+  // Track the label for the selected node so the editor updates when the label changes
+  const selectedNode = nodes.find(n => n.selected);
+  const selectedNodeLabel = selectedNode?.data?.label || selectedNode?.id;
+
+  // Handler to update the script property of a node
+  const handleScriptChange = useCallback((value) => {
+    if (!selectedNode) return;
+    setNodes(nds =>
+      nds.map(n =>
+        n.id === selectedNode.id
+          ? { ...n, data: { ...n.data, script: value } }
+          : n
+      )
+    );
+  }, [selectedNode, setNodes]);
+
   return (
     <NodeUpdateContext.Provider value={onNodeUpdate}>
       <div style={{ display: "flex", height: "100vh" }}>
@@ -649,7 +720,11 @@ export default function ReactGraph() {
                       setShowStructureMenu(false);
                     }}
                   >
-                    {key}
+                    {key === "ThreeVerticalChains"
+                      ? "Vertical"
+                      : key === "ThreeHorizontalChain"
+                        ? "3 Horizontal"
+                        : key}
                   </li>
                 ))}
               </ul>
@@ -800,16 +875,68 @@ export default function ReactGraph() {
             </div>
           )}
         </div>
+        {/* Monaco Editor Pane for selected node */}
+        {selectedNode && showEditor && (
+          <div
+            style={{
+              width: "40%",
+              height: "100%",
+              background: "#fafbfc",
+              borderLeft: "1px solid #e0e0e0",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div style={{
+              padding: "10px 18px",
+              borderBottom: "1px solid #e0e0e0",
+              background: "#fff",
+              fontWeight: "bold",
+              fontSize: 16,
+              color: "#222",
+              zIndex: 101,
+            }}>
+              Script: {selectedNodeLabel}
+            </div>
+            <MonacoEditor
+              height="100%"
+              defaultLanguage="python"
+              theme="light"
+              key={selectedNode.id + selectedNodeLabel} // force re-mount on node or label change
+              value={
+                selectedNode.data?.script !== undefined
+                  ? selectedNode.data.script
+                  : `print("Hello from ${selectedNodeLabel.replace(/"/g, '\\"')}")`
+              }
+              onChange={handleScriptChange}
+              options={{
+                fontSize: 15,
+                minimap: { enabled: false },
+                wordWrap: "on",
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                lineNumbers: "on",
+                fontFamily: "monospace",
+                smoothScrolling: true,
+                tabSize: 4,
+                padding: { top: 12, bottom: 12 }
+              }}
+            />
+          </div>
+        )}
         {/* LogPane on the right */}
-        <LogPane
-          showLog={showLog}
-          runCount={runCount}
-          outputLog={outputLog}
-          runExecutions={runExecutions}
-          collapsedRuns={collapsedRuns}
-          setCollapsedRuns={setCollapsedRuns}
-          replayRun={replayRun}
-        />
+        {(!selectedNode || !showEditor) && (
+          <LogPane
+            showLog={showLog}
+            runCount={runCount}
+            outputLog={outputLog}
+            runExecutions={runExecutions}
+            collapsedRuns={collapsedRuns}
+            setCollapsedRuns={setCollapsedRuns}
+            replayRun={replayRun}
+          />
+        )}
       </div>
     </NodeUpdateContext.Provider>
   );

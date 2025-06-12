@@ -2,7 +2,14 @@ import React, { useState } from "react";
 import { Handle } from "reactflow";
 
 
-const Node = ({ data = {}, id, selected, setNodes }) => {
+const Node = ({
+    data = {},
+    id,
+    selected,
+    setNodes,
+    sourcePosition = "right",
+    targetPosition = "left"
+}) => {
     const [renaming, setRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState(data.name || "Task");
     const [showContent, setShowContent] = useState(false);
@@ -10,8 +17,8 @@ const Node = ({ data = {}, id, selected, setNodes }) => {
 
     // Sync renameValue with data.name if it changes externally
     React.useEffect(() => {
-        setRenameValue(data.name || "Task");
-    }, [data.name]);
+        setRenameValue(data.label || data.name || "Task");
+    }, [data.label, data.name]);
 
     // Listen for 'i' key to enter renaming mode if not already renaming and not showing content
     React.useEffect(() => {
@@ -34,7 +41,15 @@ const Node = ({ data = {}, id, selected, setNodes }) => {
         setRenaming(true);
     };
 
-    const handleRenameInputChange = (e) => setRenameValue(e.target.value);
+    const handleRenameInputChange = (e) => {
+        setRenameValue(e.target.value);
+        // Fire a custom event with the new name and node id
+        window.dispatchEvent(new CustomEvent("node-rename", {
+            detail: { id, name: e.target.value }
+        }));
+        // Log the new name value
+        console.log("Node rename event:", e.target.value);
+    };
     const handleRenameInputKeyDown = (e) => {
         if (e.key === "Enter") {
             if (setNodes) {
@@ -61,6 +76,25 @@ const Node = ({ data = {}, id, selected, setNodes }) => {
         }
     }, [renaming]);
 
+    // Helper to compute handle style for any position
+    const getHandleStyle = (pos, type) => {
+        switch (pos) {
+            case "top":
+                return { top: 0, left: "50%", transform: "translateX(-50%)", background: '#555' };
+            case "bottom":
+                return { bottom: 0, left: "50%", transform: "translateX(-50%)", background: '#555' };
+            case "left":
+                return { left: 0, top: "50%", transform: "translateY(-50%)", background: '#555' };
+            case "right":
+                return { right: 0, top: "50%", transform: "translateY(-50%)", background: '#555' };
+            default:
+                // fallback to right for source, left for target
+                return type === "source"
+                    ? { right: 0, top: "50%", transform: "translateY(-50%)", background: '#555' }
+                    : { left: 0, top: "50%", transform: "translateY(-50%)", background: '#555' };
+        }
+    };
+
     return (
         <div
             style={{
@@ -70,8 +104,18 @@ const Node = ({ data = {}, id, selected, setNodes }) => {
             onContextMenu={handleContextMenu}
             data-id={id}
         >
-            <Handle type="source" position="right" style={{ right: 0, background: '#555' }} isConnectable={true} />
-            <Handle type="target" position="left" style={{ left: 0, background: '#555' }} isConnectable={true} />
+            <Handle
+                type="source"
+                position={data.sourcePosition || sourcePosition}
+                style={getHandleStyle(data.sourcePosition || sourcePosition, "source")}
+                isConnectable={true}
+            />
+            <Handle
+                type="target"
+                position={data.targetPosition || targetPosition}
+                style={getHandleStyle(data.targetPosition || targetPosition, "target")}
+                isConnectable={true}
+            />
             <div style={{
                 display: "flex",
                 flexDirection: "column",
