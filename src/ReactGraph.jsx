@@ -571,8 +571,8 @@ export default function ReactGraph() {
           ? {
             ...n,
             position: {
-              x: (n.position?.x || 0) + deltaX,
-              y: (n.position?.y || 0) + deltaY,
+              x: (n.position?.x || 0),
+              y: (n.position?.y || 0),
             },
           }
           : n
