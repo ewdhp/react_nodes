@@ -6,6 +6,7 @@ import Node from "./Node";
 import { NodeUpdateContext } from "./NodeUpdateContext";
 import LogPane from "./LogPane";
 import TerminalTabs from './Terminal'; // adjust path if needed
+import * as GraphStructures from "./GraphStructures";
 
 const initialNodes = [
 ];
@@ -45,6 +46,8 @@ export default function ReactGraph() {
   const [runExecutions, setRunExecutions] = useState({});
   const [collapsedRuns, setCollapsedRuns] = useState({});
   const [showTerminal, setShowTerminal] = useState(false);
+  const [showStructureMenu, setShowStructureMenu] = useState(false);
+  const [structureMenuIndex, setStructureMenuIndex] = useState(0);
   const reactFlowInstance = useRef(null);
 
   // Ctrl + Alt + N to open NodeTypeMenu
@@ -339,10 +342,53 @@ export default function ReactGraph() {
         });
         return;
       }
+      // Toggle structure navbar: Ctrl+Alt+M
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        setShowStructureMenu((v) => !v);
+        setStructureMenuIndex(0);
+        return;
+      }
+
+      // Structure menu navigation
+      if (showStructureMenu) {
+        const structureKeys = Object.keys(GraphStructures);
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setStructureMenuIndex(i => (i + 1) % structureKeys.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setStructureMenuIndex(i => (i - 1 + structureKeys.length) % structureKeys.length);
+          return;
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const key = structureKeys[structureMenuIndex];
+          if (key && GraphStructures[key]) {
+            GraphStructures[key]({
+              setNodes,
+              setEdges,
+              nodes,
+              edges,
+            });
+            setShowStructureMenu(false);
+          }
+          return;
+        }
+        if (e.key === "Escape") {
+          setShowStructureMenu(false);
+          return;
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [nodes, edges, selectedNodes, history, future, loadGraphFromFile]);
+  }, [
+    nodes, edges, selectedNodes, history, future, loadGraphFromFile,
+    showStructureMenu, structureMenuIndex
+  ]);
 
   // --- Mouse: multi-select, deselect, inline rename ---
   // Use this callback for both click and rectangle selection to keep logic consistent
@@ -384,50 +430,6 @@ export default function ReactGraph() {
   const replayRun = (runId) => {
     // ...existing code or leave as a stub...
   };
-
-  const generateCircleGraph = useCallback(() => {
-    const centerX = 400;
-    const centerY = 400;
-    const radius = 250;
-    const nodeCount = 10;
-    const newNodes = [];
-    const newEdges = [];
-
-    // Generate unique IDs to avoid collision
-    const timestamp = Date.now();
-    const centerId = `center-${timestamp}`;
-
-    // Center node
-    newNodes.push({
-      id: centerId,
-      position: { x: centerX, y: centerY },
-      type: 'base',
-      data: { label: 'Center' },
-    });
-
-    // Peripheral nodes and edges
-    for (let i = 0; i < nodeCount; i++) {
-      const angle = (2 * Math.PI * i) / nodeCount;
-      const x = centerX + radius * Math.cos(angle);
-      const y = centerY + radius * Math.sin(angle);
-      const nodeId = `node${i + 1}-${timestamp}`;
-      newNodes.push({
-        id: nodeId,
-        position: { x, y },
-        type: 'base',
-        data: { label: `Node ${i + 1}` },
-      });
-      newEdges.push({
-        id: `${centerId}-${nodeId}`,
-        source: centerId,
-        target: nodeId,
-        animated: true,
-      });
-    }
-
-    setNodes(prev => [...prev, ...newNodes]);
-    setEdges(prev => [...prev, ...newEdges]);
-  }, [setNodes, setEdges]);
 
   // Rectangle selection state
   const [selectionRect, setSelectionRect] = useState(null);
@@ -588,6 +590,72 @@ export default function ReactGraph() {
           }}
           onMouseDown={handlePaneMouseDown}
         >
+          {/* Structure navbar */}
+          {showStructureMenu && (
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: 320,
+                height: "100%",
+                background: "#fff",
+                borderRight: "1px solid #ddd",
+                zIndex: 3000,
+                boxShadow: "2px 0 12px #0001",
+                padding: 0,
+                display: "flex",
+                flexDirection: "column"
+              }}
+            >
+              <div style={{
+                fontWeight: "bold",
+                fontSize: 20,
+                padding: "18px 24px 8px 24px",
+                borderBottom: "1px solid #eee"
+              }}>
+                Graph Structures
+              </div>
+              <ul style={{
+                listStyle: "none",
+                margin: 0,
+                padding: 0,
+                flex: 1,
+                overflowY: "auto"
+              }}>
+                {Object.keys(GraphStructures).map((key, idx) => (
+                  <li
+                    key={key}
+                    style={{
+                      padding: "14px 28px",
+                      background: idx === structureMenuIndex ? "#e3f2fd" : undefined,
+                      color: idx === structureMenuIndex ? "#1976d2" : "#222",
+                      fontWeight: idx === structureMenuIndex ? "bold" : "normal",
+                      cursor: "pointer"
+                    }}
+                    onMouseEnter={() => setStructureMenuIndex(idx)}
+                    onClick={() => {
+                      GraphStructures[key]({ setNodes, setEdges, nodes, edges });
+                      setShowStructureMenu(false);
+                    }}
+                  >
+                    {key}
+                  </li>
+                ))}
+              </ul>
+              <div style={{
+                fontSize: 13,
+                color: "#888",
+                padding: "10px 24px 18px 24px",
+                borderTop: "1px solid #eee"
+              }}>
+                <div><b>↑/↓</b>: Navigate</div>
+                <div><b>Enter</b>: Insert structure</div>
+                <div><b>Esc</b>: Close</div>
+                <div><b>Ctrl+Alt+M</b>: Toggle menu</div>
+              </div>
+            </div>
+          )}
           {/* Rectangle selection overlay */}
           {selectionRect && (
             <div
@@ -604,25 +672,6 @@ export default function ReactGraph() {
               }}
             />
           )}
-          {/* Add a button to generate the circle/star graph */}
-          <button
-            style={{
-              position: "absolute",
-              top: 16,
-              left: 16,
-              zIndex: 1001,
-              padding: "8px 16px",
-              borderRadius: 4,
-              border: "none",
-              background: "#00bcd4",
-              color: "#fff",
-              fontWeight: "bold",
-              cursor: "pointer"
-            }}
-            onClick={generateCircleGraph}
-          >
-            Generate Circle Graph
-          </button>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -717,6 +766,7 @@ export default function ReactGraph() {
                 <li><b>Ctrl + S</b>: Save graph</li>
                 <li><b>Ctrl + O</b>: Load graph</li>
                 <li><b>Ctrl + Alt + H</b>: Show/hide</li>
+                <li><b>Ctrl + Alt + M</b>: Toggle structure menu</li>
               </ul>
             </div>
           )}
