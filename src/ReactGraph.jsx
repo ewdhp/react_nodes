@@ -46,8 +46,8 @@ export default function ReactGraph() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [showNodeTypeMenu, setShowNodeTypeMenu] = useState(false);
-  const [showHotkeys, setShowHotkeys] = useState(false);
-  const [showLog, setShowLog] = useState(true); // Show LogPane by default
+  const [showHotkeys, setShowHotkeys] = useState(true);
+  const [showLog, setShowLog] = useState(false); // Show LogPane by default
   const [runCount, setRunCount] = useState(0);
   const [outputLog, setOutputLog] = useState([]);
   const [runExecutions, setRunExecutions] = useState({});
@@ -840,7 +840,7 @@ export default function ReactGraph() {
                 <li><b>Ctrl + S</b>: Save graph</li>
                 <li><b>Ctrl + O</b>: Load graph</li>
                 <li><b>Ctrl + Alt + H</b>: Show/hide</li>
-                <li><b>Ctrl + Alt + M</b>: Toggle structure menu</li>
+                <li><b>Ctrl + Alt + M</b>: Toggle menu</li>
               </ul>
             </div>
           )}
