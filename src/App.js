@@ -1,7 +1,7 @@
 import React from "react";
 import { ReactFlowProvider } from "reactflow";
-import ReactGraph from "./ReactGraph";
-import TerminalProvider from "./TerminalProvider";
+import ReactGraph from "./components/ReactGraph";
+import TerminalProvider from "./components/TerminalProvider";
 function App() {
   return (
     <>

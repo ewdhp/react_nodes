@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Handle } from "reactflow";
+import { Handle } from "../../node_modules/reactflow/dist/esm";
 
 
 const Node = ({

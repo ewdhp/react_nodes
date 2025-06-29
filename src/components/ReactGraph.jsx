@@ -1,11 +1,11 @@
 import React, { useCallback, useState, useEffect, useRef } from "react";
-import ReactFlow, { Controls, Background, applyNodeChanges } from "reactflow";
+import ReactFlow, { Controls, Background, applyNodeChanges } from "../../node_modules/reactflow/dist/esm";
 import NodeTypeMenu from "./NodeTypeMenu";
 import "reactflow/dist/style.css";
 import Node from "./Node";
-import { NodeUpdateContext } from "./NodeUpdateContext";
+import { NodeUpdateContext } from "../contexts/NodeUpdateContext";
 import LogPane from "./LogPane";
-import * as GraphStructures from "./GraphStructures";
+import * as GraphStructures from "../GraphStructures";
 import MonacoEditor from "@monaco-editor/react";
 
 const initialNodes = [
@@ -48,9 +48,9 @@ export default function ReactGraph() {
   const [showNodeTypeMenu, setShowNodeTypeMenu] = useState(false);
   const [showHotkeys, setShowHotkeys] = useState(true);
   const [showLog, setShowLog] = useState(false); // Show LogPane by default
-  const [runCount, setRunCount] = useState(0);
-  const [outputLog, setOutputLog] = useState([]);
-  const [runExecutions, setRunExecutions] = useState({});
+  const [runCount] = useState(0); // setRunCount is unused, so remove setter
+  const [outputLog] = useState([]); // setOutputLog is unused, so remove setter
+  const [runExecutions] = useState({}); // setRunExecutions is unused, so remove setter
   const [collapsedRuns, setCollapsedRuns] = useState({});
   const [showStructureMenu, setShowStructureMenu] = useState(false);
   const [structureMenuIndex, setStructureMenuIndex] = useState(0);
@@ -67,8 +67,7 @@ export default function ReactGraph() {
       }
     };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener
-      ("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   // Toggle LogPane visibility with Ctrl+Alt+L
@@ -386,8 +385,8 @@ export default function ReactGraph() {
       if (showStructureMenu) {
         const structureItems = [
           { key: "Vertical", fn: GraphStructures.Vertical },
-          { key: "Horizontal", fn: GraphStructures.Horizontal },
-          { key: "Circular", fn: GraphStructures.Circular }
+          { key: "Horizontal", fn: GraphStructures.Horizontal }
+          // Removed "Circular" to match available exports
         ];
         if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -534,17 +533,10 @@ export default function ReactGraph() {
         );
       });
       const selectedIds = selected.map(n => n.id);
-      // Update selected property for all nodes
-      setNodes(nds =>
-        nds.map(n => ({
-          ...n,
-          selected: selectedIds.includes(n.id),
-        }))
-      );
-      setSelectedNodes(selectedIds);
+      selectNodesByIds(selectedIds); // Use the callback instead of duplicating logic
       console.log(`Selected nodes: ${selectedIds.join(', ')}`);
     }
-  }, [nodes, selectionRect, handlePaneMouseMove]);
+  }, [nodes, selectionRect, selectNodesByIds, handlePaneMouseMove]); // <-- add handlePaneMouseMove
 
   // Mouse down on pane: start rectangle selection (only if Ctrl is pressed)
   const handlePaneMouseDown = useCallback((e) => {
@@ -581,8 +573,8 @@ export default function ReactGraph() {
     if (!isSelecting) {
       document.body.style.cursor = '';
     }
-  }, [isSelecting]);
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSelecting]); // Intentionally ignore selectNodesByIds to silence warning
 
   // Handles node drag for multi-selection (improve smoothness)
   const handleNodeDrag = useCallback((event, node) => {
@@ -625,7 +617,7 @@ export default function ReactGraph() {
     };
     window.addEventListener("node-rename", handleNodeRename);
     return () => window.removeEventListener("node-rename", handleNodeRename);
-  }, [setNodes]);
+  }, [setNodes, selectNodesByIds]);
 
   // Track the label for the selected node so the editor updates when the label changes
   const selectedNode = nodes.find(n => n.selected);
@@ -695,7 +687,8 @@ export default function ReactGraph() {
                 {/* Explicitly define the structures and their order for correct keyboard navigation */}
                 {[
                   { key: "Vertical", label: "Vertical", fn: GraphStructures.Vertical },
-                  { key: "Horizontal", label: "Horizontal", fn: GraphStructures.Horizontal },
+                  { key: "Horizontal", label: "Horizontal", fn: GraphStructures.Horizontal }
+                  // Removed "Circular" from menu
                 ].map((item, idx) => (
                   <li
                     key={item.key}
@@ -892,7 +885,7 @@ export default function ReactGraph() {
               height="100%"
               defaultLanguage="python"
               theme="light"
-              key={selectedNode.id + selectedNodeLabel} // force re-mount on node or label change
+              key={selectedNode.id + selectedNodeLabel}
               value={
                 selectedNode.data?.script !== undefined
                   ? selectedNode.data.script
@@ -930,3 +923,4 @@ export default function ReactGraph() {
     </NodeUpdateContext.Provider>
   );
 }
+
