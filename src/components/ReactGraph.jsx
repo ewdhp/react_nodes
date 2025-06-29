@@ -6,6 +6,7 @@ import { NodeUpdateContext } from "../contexts/NodeUpdateContext";
 import LogPane from "./LogPane";
 import * as GraphStructures from "../GraphStructures";
 import MonacoEditor from "@monaco-editor/react";
+import StructureMenu from "./StructureMenu";
 
 const initialNodes = [
 ];
@@ -109,21 +110,6 @@ export default function ReactGraph() {
   // const nodeTypes = useMemo(() => ({
   //   base: HighlightNode,
   // }), []);
-
-  // Utility: generate a unique node id with type and number
-  const generateNodeId = useCallback((typeKey, nodeNumber) => {
-    return `${typeKey.toLowerCase()}-${nodeNumber}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-  }, []);
-
-  // Utility: get the next sequential node number for a given type
-  const getNextNodeNumber = useCallback((typeKey) => {
-    const typeLabel = typeKey.charAt(0).toUpperCase() + typeKey.slice(1);
-    const count = nodes.filter(
-      n => (n.type === typeKey) ||
-        (n.data?.label && n.data.label.startsWith(typeLabel))
-    ).length;
-    return count + 1;
-  }, [nodes]);
 
   // Handles node movement
   const onNodesChange = useCallback(
@@ -578,6 +564,12 @@ export default function ReactGraph() {
     );
   }, [selectedNode, setNodes]);
 
+  // Structure menu items (move above JSX)
+  const structureItems = [
+    { key: "Vertical", label: "Vertical", fn: GraphStructures.Vertical },
+    { key: "Horizontal", label: "Horizontal", fn: GraphStructures.Horizontal }
+  ];
+
   return (
     <NodeUpdateContext.Provider value={onNodeUpdate}>
       <div style={{ display: "flex", height: "100vh" }}>
@@ -595,77 +587,18 @@ export default function ReactGraph() {
           onMouseDown={handlePaneMouseDown}
         >
           {/* Structure navbar */}
-          {showStructureMenu && (
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: 320,
-                height: "100%",
-                background: "#fff",
-                borderRight: "1px solid #ddd",
-                zIndex: 3000,
-                boxShadow: "2px 0 12px #0001",
-                padding: 0,
-                display: "flex",
-                flexDirection: "column"
-              }}
-            >
-              <div style={{
-                fontWeight: "bold",
-                fontSize: 20,
-                padding: "18px 24px 8px 24px",
-                borderBottom: "1px solid #eee"
-              }}>
-                Graph Structures
-              </div>
-              <ul style={{
-                listStyle: "none",
-                margin: 0,
-                padding: 0,
-                flex: 1,
-                overflowY: "auto"
-              }}>
-                {/* Explicitly define the structures and their order for correct keyboard navigation */}
-                {[
-                  { key: "Vertical", label: "Vertical", fn: GraphStructures.Vertical },
-                  { key: "Horizontal", label: "Horizontal", fn: GraphStructures.Horizontal }
-                  // Removed "Circular" from menu
-                ].map((item, idx) => (
-                  <li
-                    key={item.key}
-                    style={{
-                      padding: "14px 28px",
-                      background: structureMenuIndex === idx ? "#e3f2fd" : undefined,
-                      color: structureMenuIndex === idx ? "#1976d2" : "#222",
-                      fontWeight: structureMenuIndex === idx ? "bold" : "normal",
-                      cursor: "pointer"
-                    }}
-                    onMouseEnter={() => setStructureMenuIndex(idx)}
-                    onClick={() => {
-                      const newIds = item.fn({ setNodes, setEdges, nodes, edges });
-                      setTimeout(() => selectNodesByIds(newIds), 0);
-                      setShowStructureMenu(false);
-                    }}
-                  >
-                    {item.label}
-                  </li>
-                ))}
-              </ul>
-              <div style={{
-                fontSize: 13,
-                color: "#888",
-                padding: "10px 24px 18px 24px",
-                borderTop: "1px solid #eee"
-              }}>
-                <div><b>↑/↓</b>: Navigate</div>
-                <div><b>Enter</b>: Insert structure</div>
-                <div><b>Esc</b>: Close</div>
-                <div><b>Ctrl+Alt+M</b>: Toggle menu</div>
-              </div>
-            </div>
-          )}
+          <StructureMenu
+            show={showStructureMenu}
+            structureMenuIndex={structureMenuIndex}
+            setStructureMenuIndex={setStructureMenuIndex}
+            setShowStructureMenu={setShowStructureMenu}
+            structureItems={structureItems}
+            setNodes={setNodes}
+            setEdges={setEdges}
+            nodes={nodes}
+            edges={edges}
+            selectNodesByIds={selectNodesByIds}
+          />
           {/* Rectangle selection overlay */}
           {selectionRect && (
             <div
