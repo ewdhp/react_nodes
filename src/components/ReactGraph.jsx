@@ -247,6 +247,7 @@ export default function ReactGraph() {
         setShowHotkeys((v) => !v);
         return;
       }
+
       // Copy selected nodes: Ctrl+Shift+C
       if (
         e.ctrlKey &&
@@ -312,11 +313,6 @@ export default function ReactGraph() {
 
       // Structure menu navigation
       if (showStructureMenu) {
-        const structureItems = [
-          { key: "Vertical", fn: GraphStructures.Vertical },
-          { key: "Horizontal", fn: GraphStructures.Horizontal }
-          // Removed "Circular" to match available exports
-        ];
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setStructureMenuIndex(i => (i + 1) % structureItems.length);
@@ -347,7 +343,7 @@ export default function ReactGraph() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     nodes, edges, selectedNodes, history, future, loadGraphFromFile,
-    showStructureMenu, structureMenuIndex
+    showStructureMenu, structureMenuIndex, structureItems, setNodes, setEdges, selectNodesByIds
   ]);
 
   // --- Mouse: multi-select, deselect, inline rename ---

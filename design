@@ -1,0 +1,46 @@
+1. Imports and Setup
+Imports React, ReactFlow, custom components, and helpers.
+Defines initial empty arrays for nodes and edges.
+2. HighlightNode
+A wrapper for nodes that visually highlights the selected node.
+3. Component State
+Manages state for nodes, edges, UI toggles 
+(log, hotkeys, structure menu, editor), 
+selection, undo/redo history, and rectangle selection.
+4. Keyboard Shortcuts (Hotkeys)
+Uses useEffect to add global keyboard listeners for:
+Toggling log pane (Ctrl+Alt+L)
+Toggling code editor (Ctrl+Alt+C)
+Undo/redo (Ctrl+Z/Ctrl+Y)
+Save/load graph (Ctrl+S/Ctrl+O)
+Show/hide hotkeys overlay (Ctrl+Alt+H)
+Toggle structure menu (Ctrl+Alt+M)
+Structure menu navigation (arrow keys, enter, escape)
+Node/edge deletion, deselection, and copy
+5. Node and Edge Management
+Functions for updating node data, moving nodes, updating edges, 
+connecting nodes, and deleting edges.
+6. Selection and Multi-Selection
+Handles node selection (single/multi with Ctrl/Shift), deselection, 
+and rectangle selection (drag to select multiple nodes).
+7. Structure Menu
+The left-side menu (now a separate StructureMenu component) allows 
+users to apply graph layouts (e.g., vertical, horizontal) to the nodes.
+Keyboard navigation for this menu is handled in the hotkey handler.
+8. Node Editing
+Double-clicking a node (handled in the Node component) allows renaming.
+The right pane shows a Monaco code editor for the selected node’s script.
+9. Rendering
+The main layout is a flexbox with:
+The graph and overlays on the left
+The code editor for the selected node (or the log pane if no node 
+is selected) on the right
+10. Other Features
+Undo/redo history for nodes and edges.
+Copy/paste for selected nodes and their edges.
+Keyboard navigation for the structure menu and hotkeys overlay.
+Summary:
+The component provides a visual graph editor with keyboard shortcuts, 
+multi-selection, undo/redo, structure layouts, and a code editor 
+for each node. The flow is modular, with state and handlers for 
+each major feature, and UI split into logical panes and overlays.
