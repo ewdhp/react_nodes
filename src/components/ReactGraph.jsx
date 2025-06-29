@@ -1,6 +1,5 @@
 import React, { useCallback, useState, useEffect, useRef } from "react";
 import ReactFlow, { Controls, Background, applyNodeChanges } from "../../node_modules/reactflow/dist/esm";
-import NodeTypeMenu from "./NodeTypeMenu";
 import "reactflow/dist/style.css";
 import Node from "./Node";
 import { NodeUpdateContext } from "../contexts/NodeUpdateContext";
@@ -45,7 +44,6 @@ const nodeTypes = {
 export default function ReactGraph() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
-  const [showNodeTypeMenu, setShowNodeTypeMenu] = useState(false);
   const [showHotkeys, setShowHotkeys] = useState(true);
   const [showLog, setShowLog] = useState(false); // Show LogPane by default
   const [runCount] = useState(0); // setRunCount is unused, so remove setter
@@ -56,19 +54,6 @@ export default function ReactGraph() {
   const [structureMenuIndex, setStructureMenuIndex] = useState(0);
   const [showEditor, setShowEditor] = useState(true);
   const reactFlowInstance = useRef(null);
-
-  // Ctrl + Alt + N to open NodeTypeMenu
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.ctrlKey && e.altKey &&
-        e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        setShowNodeTypeMenu(true);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
 
   // Toggle LogPane visibility with Ctrl+Alt+L
   useEffect(() => {
@@ -139,42 +124,6 @@ export default function ReactGraph() {
     ).length;
     return count + 1;
   }, [nodes]);
-
-  // Callback for NodeTypeMenu to add a new node
-  const handleAddNodeOfType = (typeKey) => {
-    const nodeNumber = getNextNodeNumber(typeKey);
-    const nodeLabel = `${typeKey.charAt(0).toUpperCase() + typeKey.slice(1)} ${nodeNumber}`;
-    const newId = generateNodeId(typeKey, nodeNumber);
-    let position = { x: 0, y: 0 };
-    if (reactFlowInstance.current) {
-      const container = document.querySelector('.react-flow');
-      const logPane = document.querySelector('.log-pane-root');
-      let logPaneWidth = 0;
-      if (logPane && logPane.offsetWidth) {
-        logPaneWidth = logPane.offsetWidth;
-      }
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        let x = rect.width / 2;
-        let y = rect.height / 2;
-        // Subtract half the log pane width from the x position
-        x = x - logPaneWidth / 2;
-        position = { x, y };
-      }
-    }
-    const newNode = {
-      id: newId,
-      position,
-      type: typeKey,
-      data: {
-        label: nodeLabel,
-        name: nodeLabel, // ensure both label and name are set
-        nodeId: newId    // store the generated id in data as well
-      },
-    };
-    setNodes((nds) => nds.concat(newNode));
-    setShowNodeTypeMenu(false);
-  };
 
   // Handles node movement
   const onNodesChange = useCallback(
@@ -248,12 +197,6 @@ export default function ReactGraph() {
   // --- Hotkey handler ---
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Node creation
-      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        setShowNodeTypeMenu(true);
-        return;
-      }
       // Undo
       if (e.ctrlKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -757,43 +700,6 @@ export default function ReactGraph() {
             <Controls />
             <Background color="#f0f0f0" gap={20} />
           </ReactFlow>
-          {/* Node type selection menu */}
-          {showNodeTypeMenu && (
-            <div
-              style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                width: "100vw",
-                height: "100vh",
-                display: "flex",
-                alignItems: "center",
-                // justifyContent: "center", // Remove this
-                zIndex: 2001,
-                background: "rgba(0,0,0,0.15)",
-                // Shift overlay left by log pane width if present
-                right: (document.querySelector('.log-pane-root')?.offsetWidth || 0),
-                width: `calc(100vw - ${(document.querySelector('.log-pane-root')?.offsetWidth || 0)}px)`
-              }}
-            >
-              <div
-                style={{
-                  position: "fixed",
-                  top: "16%",
-                  left: "14%",
-                  transform: "translate(-50%, -50%)",
-                  zIndex: 2002,
-                }}
-              >
-                <NodeTypeMenu
-                  nodeTypes={nodeTypes}
-                  open={showNodeTypeMenu}
-                  onSelect={handleAddNodeOfType}
-                  onCancel={() => setShowNodeTypeMenu(false)}
-                />
-              </div>
-            </div>
-          )}
           {/* Hotkeys overlay */}
           {showHotkeys && (
             <div
