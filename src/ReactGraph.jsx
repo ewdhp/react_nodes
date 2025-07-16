@@ -9,6 +9,7 @@ import MonacoEditor from "@monaco-editor/react";
 import StructureMenu from "./components/StructureMenu";
 import TopNavbar from "./components/TopNavbar";
 import Terminal from "./components/XtermTerminal";
+import BasicTerminal from "./components/BasicTerminal";
 
 const initialNodes = [
 ];
@@ -47,7 +48,7 @@ const nodeTypes = {
 export default function ReactGraph() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
-  const [showHotkeys, setShowHotkeys] = useState(true);
+  const [showHotkeys, setShowHotkeys] = useState(false);
   const [runCount] = useState(0);
   const [outputLog] = useState([]);
   const [runExecutions] = useState({});
@@ -57,7 +58,6 @@ export default function ReactGraph() {
   
   // Layout state - which section is currently active
   const [activeSection, setActiveSection] = useState('graph'); // 'graph', 'terminal', 'config'
-  const [isTerminalMaximized, setIsTerminalMaximized] = useState(false);
   const [jsonConfig, setJsonConfig] = useState({
     ver: 1,
     type: "graph_execute",
@@ -304,7 +304,7 @@ export default function ReactGraph() {
       if (e.ctrlKey && e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
         e.stopPropagation();
-        const sections = ['graph', 'terminal', 'config'];
+        const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
         const currentIndex = sections.indexOf(activeSection);
         let newIndex;
         
@@ -318,13 +318,21 @@ export default function ReactGraph() {
         return false; // Prevent further event handling
       }
 
-      // Handle Alt+1-3 navigation (this is safe as it doesn't conflict with editing)
-      if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[1-3]$/.test(e.key)) {
+      // Handle Alt+1-5 navigation (this is safe as it doesn't conflict with editing)
+      if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[1-5]$/.test(e.key)) {
         e.preventDefault();
         e.stopPropagation();
-        const sections = ['graph', 'terminal', 'config'];
+        const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
         const sectionIndex = parseInt(e.key) - 1;
         setActiveSection(sections[sectionIndex]);
+        return false;
+      }
+
+      // Handle Ctrl+Alt+T for XTerm terminal
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveSection('xterm');
         return false;
       }
 
@@ -766,11 +774,6 @@ export default function ReactGraph() {
     }
   }, []);
 
-  // Toggle terminal maximize/minimize
-  const toggleTerminalMaximize = useCallback(() => {
-    setIsTerminalMaximized(prev => !prev);
-  }, []);
-
   return (
     <NodeUpdateContext.Provider value={onNodeUpdate}>
       <div style={{ 
@@ -949,7 +952,8 @@ export default function ReactGraph() {
                     listStyle: 'none'
                   }}>
                     <li><b>Ctrl + ←/→</b>: Navigate sections (circular)</li>
-                    <li><b>Alt + 1-4</b>: Jump to specific section</li>
+                    <li><b>Alt + 1-5</b>: Jump to specific section</li>
+                    <li><b>Ctrl + Alt + T</b>: XTerm Terminal</li>
                     <li><b>Ctrl + Alt + N</b>: New node menu</li>
                     <li><b>Delete</b>: Delete selected node(s)</li>
                     <li><b>Ctrl/Shift + Click</b>: Multi-select</li>
@@ -989,94 +993,148 @@ export default function ReactGraph() {
             </div>
           )}
 
-          {/* Terminal Section */}
-          {activeSection === 'terminal' && selectedNode && (
+          {/* Scripts Section - Always mounted to prevent Monaco editor re-instantiation */}
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background: "#fafbfc",
+              boxSizing: "border-box",
+              display: activeSection === 'terminal' && selectedNode ? "flex" : "none",
+              flexDirection: "column",
+            }}
+          >
+            {/* Script Editor - 70% Height */}
+            <div style={{
+              height: "70%",
+              display: "flex",
+              flexDirection: "column"
+            }}>
+              <MonacoEditor
+                height="100%"
+                defaultLanguage="python"
+                theme="vs-light"
+                key={selectedNode?.id + (selectedNode?.data?.label || selectedNode?.id) + (nodeScripts[selectedNode?.id] || '')}
+                value={
+                  selectedNode && nodeScripts[selectedNode.id] !== undefined
+                    ? nodeScripts[selectedNode.id]
+                    : `print("Hello from ${(selectedNode?.data?.label || selectedNode?.id || 'Node').replace(/"/g, '\\"')}")`
+                }
+                onChange={handleScriptChange}
+                onMount={(editor, monaco) => {
+                  // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
+                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
+                    const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                    const currentIndex = sections.indexOf(activeSection);
+                    const newIndex = (currentIndex - 1 + sections.length) % sections.length;
+                    setActiveSection(sections[newIndex]);
+                  });
+                  
+                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
+                    const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                    const currentIndex = sections.indexOf(activeSection);
+                    const newIndex = (currentIndex + 1) % sections.length;
+                    setActiveSection(sections[newIndex]);
+                  });
+
+                  // Add Alt+1-5 keybindings
+                  for (let i = 1; i <= 5; i++) {
+                    editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
+                      const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                      setActiveSection(sections[i - 1]);
+                    });
+                  }
+
+                  // Add Ctrl+Alt+T keybinding for XTerm
+                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyT, () => {
+                    setActiveSection('xterm');
+                  });
+                }}
+                options={{
+                  fontSize: 12,
+                  minimap: { enabled: false },
+                  wordWrap: "on",
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  lineNumbers: "on",
+                  fontFamily: "monospace",
+                  smoothScrolling: true,
+                  tabSize: 4,
+                  padding: { top: 12, bottom: 12 }
+                }}
+              />
+            </div>
+            
+            {/* AI Terminal Section - 30% Height */}
+            <div style={{
+              height: "30%",
+              borderTop: "1px solid #e1e4e8",
+              display: "flex",
+              flexDirection: "column"
+            }}>
+              <div style={{
+                padding: "8px 12px",
+                background: "#f6f8fa",
+                borderBottom: "1px solid #e1e4e8",
+                fontSize: "12px",
+                fontWeight: "600",
+                color: "#586069"
+              }}>
+                AI Model Terminal
+              </div>
+              <div style={{
+                flex: 1,
+                overflow: "hidden"
+              }}>
+                <BasicTerminal />
+              </div>
+            </div>
+          </div>
+
+          {/* Scripts Placeholder when no node selected */}
+          {activeSection === 'terminal' && !selectedNode && (
             <div
               style={{
                 width: "100%",
                 height: "100%",
-                background: "#1e1e1e",
-                boxSizing: "border-box",
+                background: "#fafbfc",
                 display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
                 flexDirection: "column",
+                color: "#666",
+                fontSize: 18
               }}
             >
-              {/* Script Editor - Top Half */}
-              <div style={{
-                height: isTerminalMaximized ? "0%" : "50%",
-                display: isTerminalMaximized ? "none" : "flex",
-                flexDirection: "column",
-                borderBottom: "2px solid #3e3e3e",
-                transition: "height 0.3s ease"
-              }}>
-                <MonacoEditor
-                  height="100%"
-                  defaultLanguage="python"
-                  theme="vs-dark"
-                  key={selectedNode.id + selectedNodeLabel + (nodeScripts[selectedNode.id] || '')}
-                  value={
-                    nodeScripts[selectedNode.id] !== undefined
-                      ? nodeScripts[selectedNode.id]
-                      : `print("Hello from ${selectedNodeLabel.replace(/"/g, '\\"')}")`
-                  }
-                  onChange={handleScriptChange}
-                  onMount={(editor, monaco) => {
-                    // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
-                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
-                      const sections = ['graph', 'terminal', 'config'];
-                      const currentIndex = sections.indexOf(activeSection);
-                      const newIndex = (currentIndex - 1 + sections.length) % sections.length;
-                      setActiveSection(sections[newIndex]);
-                    });
-                    
-                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
-                      const sections = ['graph', 'terminal', 'config'];
-                      const currentIndex = sections.indexOf(activeSection);
-                      const newIndex = (currentIndex + 1) % sections.length;
-                      setActiveSection(sections[newIndex]);
-                    });
-
-                    // Add Alt+1-3 keybindings
-                    for (let i = 1; i <= 3; i++) {
-                      editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
-                        const sections = ['graph', 'terminal', 'config'];
-                        setActiveSection(sections[i - 1]);
-                      });
-                    }
-                  }}
-                  options={{
-                    fontSize: 15,
-                    minimap: { enabled: false },
-                    wordWrap: "on",
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    lineNumbers: "on",
-                    fontFamily: "monospace",
-                    smoothScrolling: true,
-                    tabSize: 4,
-                    padding: { top: 12, bottom: 12 }
-                  }}
-                />
-              </div>
-
-              {/* Terminal - Bottom Half */}
-              <div style={{
-                height: isTerminalMaximized ? "100%" : "50%",
-                minHeight: 0,
-                transition: "height 0.3s ease"
-              }}>
-                <Terminal 
-                  nodeId={selectedNode.id} 
-                  nodeName={selectedNodeLabel}
-                  isMaximized={isTerminalMaximized}
-                  onToggleMaximize={toggleTerminalMaximize}
-                />
-              </div>
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                <polyline points="16 18 22 12 16 6"/>
+                <polyline points="8 6 2 12 8 18"/>
+              </svg>
+              <p style={{ marginTop: 16 }}>Select a node to edit its script</p>
             </div>
           )}
 
-          {/* Terminal Placeholder when no node selected */}
-          {activeSection === 'terminal' && !selectedNode && (
+          {/* XTerm Terminal Section - Always mounted to prevent component re-instantiation */}
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background: "#fafbfc",
+              boxSizing: "border-box",
+              display: activeSection === 'xterm' && selectedNode ? "flex" : "none",
+              flexDirection: "column",
+            }}
+          >
+            <Terminal 
+              nodeId={selectedNode?.id} 
+              nodeName={selectedNode?.data?.label || selectedNode?.id || 'Node'}
+              isMaximized={false}
+              onToggleMaximize={() => {}}
+            />
+          </div>
+
+          {/* XTerm Terminal Placeholder when no node selected */}
+          {activeSection === 'xterm' && !selectedNode && (
             <div
               style={{
                 width: "100%",
@@ -1098,82 +1156,90 @@ export default function ReactGraph() {
             </div>
           )}
 
-          {/* JSON Config Section */}
-          {activeSection === 'config' && (
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                background: "#fafbfc",
-                boxSizing: "border-box",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <div style={{
-                padding: "10px 18px",
-                borderBottom: "1px solid #e0e0e0",
-                background: "#fff",
-                fontWeight: "bold",
-                fontSize: 16,
-                color: "#222",
-                zIndex: 101,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <span>MServer JSON Configuration</span>
-                <span style={{ fontSize: 12, color: '#666' }}>
-                  Updates automatically based on graph nodes
-                </span>
-              </div>
-              <MonacoEditor
-                height="100%"
-                defaultLanguage="json"
-                theme="light"
-                value={JSON.stringify(jsonConfig, null, 2)}
-                onChange={handleConfigChange}
-                onMount={(editor, monaco) => {
-                  // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
-                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
-                    const sections = ['graph', 'terminal', 'config'];
-                    const currentIndex = sections.indexOf(activeSection);
-                    const newIndex = (currentIndex - 1 + sections.length) % sections.length;
-                    setActiveSection(sections[newIndex]);
-                  });
-                  
-                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
-                    const sections = ['graph', 'terminal', 'config'];
-                    const currentIndex = sections.indexOf(activeSection);
-                    const newIndex = (currentIndex + 1) % sections.length;
-                    setActiveSection(sections[newIndex]);
-                  });
+          {/* JSON Config Section - Always mounted to prevent re-instantiation */}
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background: "#fafbfc",
+              boxSizing: "border-box",
+              display: activeSection === 'config' ? "flex" : "none", // Use display instead of conditional rendering
+              flexDirection: "column",
+            }}
+          >
+            <MonacoEditor
+              height="100%"
+              defaultLanguage="json"
+              theme="vs-dark"
+              value={JSON.stringify(jsonConfig, null, 2)}
+              onChange={handleConfigChange}
+              onMount={(editor, monaco) => {
+                // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
+                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
+                  const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                  const currentIndex = sections.indexOf(activeSection);
+                  const newIndex = (currentIndex - 1 + sections.length) % sections.length;
+                  setActiveSection(sections[newIndex]);
+                });
+                
+                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
+                  const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                  const currentIndex = sections.indexOf(activeSection);
+                  const newIndex = (currentIndex + 1) % sections.length;
+                  setActiveSection(sections[newIndex]);
+                });
 
-                  // Add Alt+1-3 keybindings
-                  for (let i = 1; i <= 3; i++) {
-                    editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
-                      const sections = ['graph', 'terminal', 'config'];
-                      setActiveSection(sections[i - 1]);
-                    });
-                  }
-                }}
-                options={{
-                  fontSize: 15,
-                  minimap: { enabled: false },
-                  wordWrap: "on",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  lineNumbers: "on",
-                  fontFamily: "monospace",
-                  smoothScrolling: true,
-                  tabSize: 2,
-                  padding: { top: 12, bottom: 12 },
-                  formatOnPaste: true,
-                  formatOnType: true
-                }}
-              />
-            </div>
-          )}
+                // Add Alt+1-5 keybindings
+                for (let i = 1; i <= 5; i++) {
+                  editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
+                    const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                    setActiveSection(sections[i - 1]);
+                  });
+                }
+
+                // Add Ctrl+Alt+T keybinding for XTerm
+                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyT, () => {
+                  setActiveSection('xterm');
+                });
+              }}
+              options={{
+                fontSize: 12,
+                minimap: { enabled: false },
+                wordWrap: "on",
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                lineNumbers: "on",
+                fontFamily: "monospace",
+                smoothScrolling: true,
+                tabSize: 2,
+                padding: { top: 12, bottom: 12 },
+                formatOnPaste: true,
+                formatOnType: true
+              }}
+            />
+          </div>
+
+          {/* Logs Section - Always mounted to prevent component re-instantiation */}
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background: "#fafbfc",
+              boxSizing: "border-box",
+              display: activeSection === 'logs' ? "flex" : "none",
+              flexDirection: "column",
+            }}
+          >
+            <LogPane 
+              showLog={true}
+              runCount={runCount}
+              outputLog={outputLog}
+              runExecutions={runExecutions}
+              collapsedRuns={collapsedRuns}
+              setCollapsedRuns={setCollapsedRuns}
+              replayRun={replayRun}
+            />
+          </div>
         </div>
       </div>
     </NodeUpdateContext.Provider>

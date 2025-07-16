@@ -9,7 +9,7 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
     // Handle common cases where server doesn't send proper line breaks
     let formatted = text
       // Handle ANSI escape sequences (basic color codes)
-      .replace(/\x1b\[[0-9;]*m/g, '') // eslint-disable-line no-control-regex
+      .replace(/\x1b\[[0-9;]*m/g, '')
       // Normalize line endings to \n but preserve all line breaks
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
@@ -73,7 +73,7 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
     return () => {
       unsubscribe();
     };
-  }, [nodeId, createTerminal, subscribeToOutput, terminalId]);
+  }, [nodeId]);
 
   useEffect(() => {
     // Auto-scroll to bottom when new output is added
@@ -121,24 +121,24 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
   return (
     <div style={{
       height: '100%',
-      background: '#ffffff',
-      color: '#333333',
+      background: '#1e1e1e',
+      color: '#ffffff',
       fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-      fontSize: '12px',
+      fontSize: '14px',
       display: 'flex',
       flexDirection: 'column'
     }}>
       {/* Terminal Header */}
       <div style={{
-        background: '#f5f5f5',
+        background: '#2d2d2d',
         padding: '8px 16px',
-        borderBottom: '1px solid #e0e0e0',
+        borderBottom: '1px solid #3e3e3e',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexShrink: 0
       }}>
-        <span style={{ fontWeight: 'bold', color: '#333333' }}>
+        <span style={{ fontWeight: 'bold', color: '#ffffff' }}>
           Basic Terminal: {nodeName}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -147,8 +147,8 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
             onClick={onToggleMaximize}
             style={{
               background: 'transparent',
-              border: '1px solid #ccc',
-              color: '#333333',
+              border: '1px solid #555',
+              color: '#ffffff',
               padding: '4px 8px',
               borderRadius: '4px',
               cursor: 'pointer',
@@ -157,7 +157,7 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
               alignItems: 'center',
               gap: '4px'
             }}
-            onMouseOver={(e) => e.target.style.background = '#e0e0e0'}
+            onMouseOver={(e) => e.target.style.background = '#444'}
             onMouseOut={(e) => e.target.style.background = 'transparent'}
             title={isMaximized ? "Minimize Terminal" : "Maximize Terminal"}
           >
@@ -190,14 +190,14 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
             onClick={clearTerminal}
             style={{
               background: 'transparent',
-              border: '1px solid #ccc',
-              color: '#333333',
+              border: '1px solid #555',
+              color: '#ffffff',
               padding: '4px 8px',
               borderRadius: '4px',
               cursor: 'pointer',
               fontSize: '12px'
             }}
-            onMouseOver={(e) => e.target.style.background = '#e0e0e0'}
+            onMouseOver={(e) => e.target.style.background = '#444'}
             onMouseOut={(e) => e.target.style.background = 'transparent'}
             title="Clear Terminal"
           >
@@ -213,11 +213,11 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
           flex: 1,
           padding: '16px',
           overflow: 'auto',
-          backgroundColor: '#ffffff',
+          backgroundColor: '#1e1e1e',
           minHeight: 0, // Important for flex child to be scrollable
           textAlign: 'left',
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-          fontSize: '12px',
+          fontSize: '14px',
           lineHeight: '1.4',
           overflowWrap: 'break-word',
           whiteSpace: 'pre-wrap', // Changed from 'pre' to 'pre-wrap' for better line wrapping
@@ -229,14 +229,14 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
 
       {/* Terminal Input */}
       <div style={{
-        background: '#f5f5f5',
+        background: '#2d2d2d',
         padding: '8px 16px',
-        borderTop: '1px solid #e0e0e0',
+        borderTop: '1px solid #3e3e3e',
         display: 'flex',
         alignItems: 'center',
         flexShrink: 0
       }}>
-        <span style={{ color: '#007acc', marginRight: '8px' }}>$</span>
+        <span style={{ color: '#00ff00', marginRight: '8px' }}>$</span>
         <input
           type="text"
           value={input}
@@ -247,8 +247,8 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
             flex: 1,
             background: 'transparent',
             border: 'none',
-            color: '#333333',
-            fontSize: '12px',
+            color: '#ffffff',
+            fontSize: '14px',
             fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
             outline: 'none',
             padding: '4px',

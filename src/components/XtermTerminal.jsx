@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -6,7 +6,6 @@ import 'xterm/css/xterm.css';
 import { useTerminalSocket } from './TerminalProvider';
 
 const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
-  const [inputBuffer, setInputBuffer] = useState('');
   const { createTerminal, sendInput, subscribeToOutput } = useTerminalSocket();
   const terminalRef = useRef(null);
   const xtermRef = useRef(null);
@@ -17,33 +16,11 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
     // Initialize xterm.js terminal
     const terminal = new Terminal({
       cursorBlink: true,
-      cursorStyle: 'block',
+      cursorStyle: 'default',
       fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
       fontSize: 14,
       lineHeight: 1.4,
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#ffffff',
-        cursor: '#ffffff',
-        selection: '#264f78',
-        black: '#000000',
-        red: '#cd3131',
-        green: '#0dbc79',
-        yellow: '#e5e510',
-        blue: '#2472c8',
-        magenta: '#bc3fbc',
-        cyan: '#11a8cd',
-        white: '#e5e5e5',
-        brightBlack: '#666666',
-        brightRed: '#f14c4c',
-        brightGreen: '#23d18b',
-        brightYellow: '#f5f543',
-        brightBlue: '#3b8eea',
-        brightMagenta: '#d670d6',
-        brightCyan: '#29b8db',
-        brightWhite: '#e5e5e5'
-      },
-      allowTransparency: false,
+      allowTransparency: true,
       scrollback: 1000,
       tabStopWidth: 4,
       // Fix for proper text alignment
@@ -67,6 +44,7 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
 
     // Local input buffer to avoid state updates causing re-renders
     let currentInputBuffer = '';
+    let initFrame = null;
 
     // Open terminal in the DOM element
     if (terminalRef.current) {
@@ -89,8 +67,8 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
         }
       }, 100);
       
-      // Wait for terminal to be ready, then fit and focus
-      setTimeout(() => {
+      // Immediate initialization without delays - terminal should be cached and ready
+      initFrame = requestAnimationFrame(() => {
         try {
           fitAddon.fit();
           terminal.focus(); // Ensure terminal has focus for keyboard input
@@ -99,7 +77,7 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
         } catch (error) {
           console.warn('Failed to initialize terminal:', error);
         }
-      }, 200); // Increased timeout to ensure DOM is ready
+      });
     }
 
     // Handle terminal input
@@ -107,12 +85,10 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
       // Handle special keys
       if (data === '\r') { // Enter key
         if (currentInputBuffer.trim()) {
-          terminal.writeln(''); // Move to next line
-          // Send command to server
-          sendInput(terminalId, currentInputBuffer);
-          currentInputBuffer = '';
-          setInputBuffer(''); // Clear React state
-          // Don't write prompt - let server handle it
+          terminal.writeln(''); // Move to next line        // Send command to server
+        sendInput(terminalId, currentInputBuffer);
+        currentInputBuffer = '';
+        // Don't write prompt - let server handle it
         } else {
           terminal.writeln('');
           // Don't write prompt for empty commands either
@@ -120,33 +96,27 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
       } else if (data === '\u0003') { // Ctrl+C
         terminal.writeln('^C');
         currentInputBuffer = '';
-        setInputBuffer('');
         // Don't write prompt - let server handle it
       } else if (data === '\u000C') { // Ctrl+L (clear screen)
         terminal.clear();
         currentInputBuffer = '';
-        setInputBuffer('');
         // Don't write prompt - let server handle it
       } else if (data === '\u0015') { // Ctrl+U (clear line)
         // Clear the current input buffer and line
         terminal.write('\r\x1b[K$ ');
         currentInputBuffer = '';
-        setInputBuffer('');
       } else if (data === '\u007F') { // Backspace
         if (currentInputBuffer.length > 0) {
           currentInputBuffer = currentInputBuffer.slice(0, -1);
-          setInputBuffer(currentInputBuffer);
           terminal.write('\b \b'); // Move back, write space, move back again
         }
       } else if (data === '\t') { // Tab
         // Add tab as spaces (could be enhanced with auto-completion)
         const spaces = '    ';
         currentInputBuffer += spaces;
-        setInputBuffer(currentInputBuffer);
         terminal.write(spaces);
       } else if (data.charCodeAt(0) >= 32) { // Printable characters
         currentInputBuffer += data;
-        setInputBuffer(currentInputBuffer);
         terminal.write(data);
       }
     });
@@ -191,12 +161,12 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
             .replace(/^\r\n/, ''); // Remove leading line break
         }
         
-        // More aggressive cleanup - remove standalone prompts that follow connection messages
+        // More aggressive cleanup - remove connection messages entirely
         processedData = processedData
-          // Remove > prompts that immediately follow WebSocket connection
-          .replace(/Connected to WebSocket server[\r\n\s]*> ?[\r\n]*/g, 'Connected to WebSocket server\r\n')
-          // Remove > prompts that immediately follow SSH connection
-          .replace(/\[SSH CONNECTED\][\r\n\s]*> ?[\r\n]*/g, '[SSH CONNECTED]\r\n')
+          // Remove WebSocket connection messages completely
+          .replace(/Connected to WebSocket server[\r\n\s]*.*?[\r\n]*/g, '')
+          // Remove SSH connection messages completely
+          .replace(/\[SSH CONNECTED\][\r\n\s]*.*?[\r\n]*/g, '')
           // Clean up multiple consecutive prompts
           .replace(/(\$ )+/g, '$ ')
           .replace(/(> )+/g, '> ')
@@ -205,44 +175,52 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
           .replace(/^>\s*[\r\n]/g, '')
           // Clean up line breaks before prompts
           .replace(/(\r?\n)+(\$ )/g, '\r\n$2')
-          .replace(/(\r?\n)+(\> )/g, '\r\n$2')
+          .replace(/(\r?\n)+(> )/g, '\r\n$2')
           // Limit consecutive line breaks
           .replace(/(\r?\n){3,}/g, '\r\n\r\n')
           // Remove alternating prompts
-          .replace(/(\$ \r?\n\> )/g, '$ ')
-          .replace(/(\> \r?\n\$ )/g, '$ ');
+          .replace(/(\$ \r?\n> )/g, '$ ')
+          .replace(/(> \r?\n\$ )/g, '$ ');
         
         console.log('After processing:', JSON.stringify(processedData));
         
-        // Skip writing if it's just a standalone prompt
-        const isJustPrompt = /^[\s]*[\$\>]\s*$/.test(processedData.trim());
+        // Skip writing if it's just a standalone prompt or connection message
+        const isJustPrompt = /^[\s]*[$>]\s*$/.test(processedData.trim());
         const isEmptyOrWhitespace = /^\s*$/.test(processedData);
-        
-        if (!isJustPrompt && !isEmptyOrWhitespace) {
-          terminal.write(processedData);
-        } else {
-          console.log('Skipped writing standalone prompt or empty data:', JSON.stringify(processedData));
-        }
-        
-        // Only add prompt if output doesn't end with one and isn't a connection message
         const isConnectionMessage = data.includes('CONNECTED') || 
                                    data.includes('Welcome to') || 
                                    data.includes('Type commands') || 
                                    data.includes('WebSocket server') ||
                                    /^Connected to WebSocket server\s*$/m.test(data.trim());
         
+        if (!isJustPrompt && !isEmptyOrWhitespace && !isConnectionMessage) {
+          terminal.write(processedData);
+        } else {
+          console.log('Skipped writing standalone prompt, empty data, or connection message:', JSON.stringify(processedData));
+        }
+        
+        // Only add prompt if the output doesn't already contain or end with a prompt
+        const hasPromptInData = processedData.includes('$ ') || processedData.includes('> ');
+        const endsWithPrompt = processedData.endsWith('$ ') || 
+                              processedData.endsWith('\n$ ') || 
+                              processedData.endsWith('\r\n$ ') ||
+                              processedData.endsWith('> ') ||
+                              processedData.endsWith('\n> ') ||
+                              processedData.endsWith('\r\n> ');
+        
         if (!isConnectionMessage && 
             !isJustPrompt &&
             !isEmptyOrWhitespace &&
-            !processedData.endsWith('$ ') && 
-            !processedData.endsWith('\n$ ') && 
-            !processedData.endsWith('\r\n$ ') &&
-            !processedData.endsWith('> ') &&
-            !processedData.endsWith('\n> ') &&
-            !processedData.endsWith('\r\n> ') &&
+            !hasPromptInData &&
+            !endsWithPrompt &&
             processedData.trim().length > 0) {
           console.log('Adding prompt after:', JSON.stringify(processedData));
-          terminal.write('\r\n$ ');
+          terminal.write('\r\n');
+        }
+        
+        // If it's a connection message, just show the prompt once
+        if (isConnectionMessage) {
+          //terminal.write('> ');
         }
       }
     });
@@ -251,15 +229,18 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
       unsubscribe();
+      if (initFrame) {
+        cancelAnimationFrame(initFrame);
+      }
       terminal.dispose();
     };
-  }, [nodeId, nodeName, createTerminal, sendInput, subscribeToOutput, terminalId]); // Remove inputBuffer from dependencies
+  }, [nodeId, nodeName, createTerminal, sendInput, subscribeToOutput, terminalId, onToggleMaximize]); // Remove inputBuffer from dependencies
 
   // Handle terminal resize and focus
   useEffect(() => {
     if (fitAddonRef.current && xtermRef.current && xtermRef.current.element) {
-      // Delay to ensure the container has finished resizing
-      const timer = setTimeout(() => {
+      // Use requestAnimationFrame for immediate, smooth resize without delays
+      const resizeFrame = requestAnimationFrame(() => {
         try {
           // Check if terminal is properly initialized before fitting
           if (xtermRef.current.element && terminalRef.current?.offsetWidth > 0) {
@@ -270,27 +251,54 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
         } catch (error) {
           console.warn('Failed to fit terminal:', error);
         }
-      }, 150); // Slightly longer delay
+      });
       
-      return () => clearTimeout(timer);
+      return () => cancelAnimationFrame(resizeFrame);
     }
   }, [isMaximized]);
 
-  // Focus the terminal when component becomes visible
+  // Handle visibility changes and immediate fitting when terminal becomes visible
   useEffect(() => {
-    if (xtermRef.current) {
-      const timer = setTimeout(() => {
-        xtermRef.current.focus();
-      }, 200);
-      return () => clearTimeout(timer);
-    }
+    if (!terminalRef.current || !fitAddonRef.current || !xtermRef.current) return;
+
+    // Use Intersection Observer to detect when terminal becomes visible
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio > 0) {
+            // Terminal is now visible, fit immediately
+            const fitFrame = requestAnimationFrame(() => {
+              try {
+                if (fitAddonRef.current && xtermRef.current?.element) {
+                  fitAddonRef.current.fit();
+                  xtermRef.current.focus();
+                }
+              } catch (error) {
+                console.warn('Failed to fit terminal on visibility change:', error);
+              }
+            });
+            
+            // Cleanup frame if component unmounts
+            return () => cancelAnimationFrame(fitFrame);
+          }
+        });
+      },
+      { threshold: 0.1 } // Trigger when at least 10% is visible
+    );
+
+    observer.observe(terminalRef.current);
+
+    return () => {
+      observer.disconnect();
+    };
   }, []);
 
   // Handle window resize
   useEffect(() => {
     const handleResize = () => {
       if (fitAddonRef.current && xtermRef.current && xtermRef.current.element) {
-        setTimeout(() => {
+        // Use requestAnimationFrame for immediate resize without delays
+        const resizeFrame = requestAnimationFrame(() => {
           try {
             // Check if terminal is properly initialized before fitting
             if (xtermRef.current.element && terminalRef.current?.offsetWidth > 0) {
@@ -301,43 +309,61 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
           } catch (error) {
             console.warn('Failed to fit terminal on resize:', error);
           }
-        }, 150);
+        });
+        
+        return () => cancelAnimationFrame(resizeFrame);
       }
     };
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+
+    // Add ResizeObserver to watch for container size changes
+    let resizeObserver;
+    if (terminalRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        handleResize();
+      });
+      resizeObserver.observe(terminalRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
   }, []);
 
   return (
     <div style={{
       height: '100%',
-      background: '#1e1e1e',
-      color: '#ffffff',
+      width: '100%',
+      background: '#ffffff',
+      color: '#000000',
       fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
       fontSize: '14px',
       display: 'flex',
-      flexDirection: 'column'
+      flexDirection: 'column',
+      position: 'relative',
+      margin: 0,
+      padding: 0
     }}>
-      {/* Simple Separator */}
-      <div style={{
-        height: '1px',
-        background: '#3e3e3e',
-        flexShrink: 0
-      }} />
-
       {/* XTerm Terminal Container */}
       <div
         ref={terminalRef}
         style={{
           flex: 1,
+          width: '100%',
+          height: '100%',
           overflow: 'hidden', // Important for xterm
-          background: '#1e1e1e',
+          background: '#ffffff',
           position: 'relative',
           // Ensure terminal text is left-aligned and not centered
           textAlign: 'left',
           // Make sure the container can receive focus
-          outline: 'none'
+          outline: 'none',
+          margin: 0,
+          padding: 0
         }}
         onClick={() => {
           // Focus the terminal when clicking anywhere in the container

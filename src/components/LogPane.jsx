@@ -56,8 +56,8 @@ const LogPane = ({
         <div
             style={{
                 position: "relative",
-                width: "45%",
-                height: "100vh",
+                width: "100%",
+                height: "100%",
                 background: "rgba(48, 48, 48, 0.95)", // changed to rgba gray
                 color: "#fff",
                 padding: "1em 1em 0 1em",
@@ -76,8 +76,8 @@ const LogPane = ({
             <div
                 ref={logContentRef}
                 style={{
-                    height: "calc(100vh - 80px)", // Fill remaining space, adjust for header
-                    overflow: "hidden",
+                    height: "calc(100% - 80px)", // Fill remaining space, adjust for header
+                    overflow: "auto",
                     cursor: "grab"
                 }}
             >

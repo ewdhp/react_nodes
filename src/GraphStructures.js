@@ -1,8 +1,3 @@
-// Utility to generate unique IDs
-function uniqueId(prefix = "node") {
-    return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-}
-
 // Add a structure: single vertical chain of 3 nodes, with vertical edges (top-bottom)
 export function Vertical({ setNodes, setEdges, nodes, edges }) {
     const baseX = 0;
@@ -95,7 +90,9 @@ export function Horizontal({ setNodes, setEdges, nodes, edges }) {
 }
 
 // Export as named functions
-export default {
+const GraphStructures = {
     Vertical,
     Horizontal,
 };
+
+export default GraphStructures;
