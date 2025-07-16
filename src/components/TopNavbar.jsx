@@ -157,6 +157,33 @@ const TopNavbar = ({ activeSection, setActiveSection }) => {
             <polyline points="10,9 9,9 8,9"/>
           </svg>
         </button>
+
+        {/* 3D Graph Section Icon */}
+        <button
+          onClick={() => setActiveSection('3d')}
+          style={{
+            background: activeSection === '3d' ? '#007acc' : 'transparent',
+            border: 'none',
+            color: '#fff',
+            padding: '12px 20px',
+            margin: '0 8px',
+            borderRadius: 6,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s ease',
+            outline: 'none',
+            boxShadow: activeSection === '3d' ? '0 0 0 2px rgba(0, 122, 204, 0.3)' : 'none'
+          }}
+          title="3D Graph (Alt+6 or Alt+Ctrl+→/←)"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </button>
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import StructureMenu from "./components/StructureMenu";
 import TopNavbar from "./components/TopNavbar";
 import Terminal from "./components/XtermTerminal";
 import BasicTerminal from "./components/BasicTerminal";
+import ThreeGraph from "./components/ThreeGraph";
 
 const initialNodes = [
 ];
@@ -57,7 +58,7 @@ export default function ReactGraph() {
   const [structureMenuIndex, setStructureMenuIndex] = useState(0);
   
   // Layout state - which section is currently active
-  const [activeSection, setActiveSection] = useState('graph'); // 'graph', 'terminal', 'config'
+  const [activeSection, setActiveSection] = useState('graph'); // 'graph', 'terminal', 'xterm', 'config', 'logs', '3d'
   const [jsonConfig, setJsonConfig] = useState({
     ver: 1,
     type: "graph_execute",
@@ -304,7 +305,7 @@ export default function ReactGraph() {
       if (e.ctrlKey && e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
         e.stopPropagation();
-        const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+        const sections = ['graph', 'terminal', 'xterm', 'config', 'logs', '3d'];
         const currentIndex = sections.indexOf(activeSection);
         let newIndex;
         
@@ -318,11 +319,11 @@ export default function ReactGraph() {
         return false; // Prevent further event handling
       }
 
-      // Handle Alt+1-5 navigation (this is safe as it doesn't conflict with editing)
-      if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[1-5]$/.test(e.key)) {
+      // Handle Alt+1-6 navigation (this is safe as it doesn't conflict with editing)
+      if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[1-6]$/.test(e.key)) {
         e.preventDefault();
         e.stopPropagation();
-        const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+        const sections = ['graph', 'terminal', 'xterm', 'config', 'logs', '3d'];
         const sectionIndex = parseInt(e.key) - 1;
         setActiveSection(sections[sectionIndex]);
         return false;
@@ -750,9 +751,8 @@ export default function ReactGraph() {
     return () => window.removeEventListener("node-rename", handleNodeRename);
   }, [setNodes, selectNodesByIds]);
 
-  // Track the label for the selected node so the editor updates when the label changes
+  // Track the selected node so the editor updates when selection changes
   const selectedNode = nodes.find(n => n.selected);
-  const selectedNodeLabel = selectedNode?.data?.label || selectedNode?.id;
 
   // Handler to update the script property of a node (stored separately from graph data)
   const handleScriptChange = useCallback((value) => {
@@ -952,7 +952,7 @@ export default function ReactGraph() {
                     listStyle: 'none'
                   }}>
                     <li><b>Ctrl + ←/→</b>: Navigate sections (circular)</li>
-                    <li><b>Alt + 1-5</b>: Jump to specific section</li>
+                    <li><b>Alt + 1-6</b>: Jump to specific section</li>
                     <li><b>Ctrl + Alt + T</b>: XTerm Terminal</li>
                     <li><b>Ctrl + Alt + N</b>: New node menu</li>
                     <li><b>Delete</b>: Delete selected node(s)</li>
@@ -1024,23 +1024,23 @@ export default function ReactGraph() {
                 onMount={(editor, monaco) => {
                   // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
                   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
-                    const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                    const sections = ['graph', 'terminal', 'xterm', 'config', 'logs', '3d'];
                     const currentIndex = sections.indexOf(activeSection);
                     const newIndex = (currentIndex - 1 + sections.length) % sections.length;
                     setActiveSection(sections[newIndex]);
                   });
                   
                   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
-                    const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                    const sections = ['graph', 'terminal', 'xterm', 'config', 'logs', '3d'];
                     const currentIndex = sections.indexOf(activeSection);
                     const newIndex = (currentIndex + 1) % sections.length;
                     setActiveSection(sections[newIndex]);
                   });
 
-                  // Add Alt+1-5 keybindings
-                  for (let i = 1; i <= 5; i++) {
+                  // Add Alt+1-6 keybindings
+                  for (let i = 1; i <= 6; i++) {
                     editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
-                      const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                      const sections = ['graph', 'terminal', 'xterm', 'config', 'logs', '3d'];
                       setActiveSection(sections[i - 1]);
                     });
                   }
@@ -1176,23 +1176,23 @@ export default function ReactGraph() {
               onMount={(editor, monaco) => {
                 // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
                 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
-                  const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                  const sections = ['graph', 'terminal', 'xterm', 'config', 'logs', '3d'];
                   const currentIndex = sections.indexOf(activeSection);
                   const newIndex = (currentIndex - 1 + sections.length) % sections.length;
                   setActiveSection(sections[newIndex]);
                 });
                 
                 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
-                  const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                  const sections = ['graph', 'terminal', 'xterm', 'config', 'logs', '3d'];
                   const currentIndex = sections.indexOf(activeSection);
                   const newIndex = (currentIndex + 1) % sections.length;
                   setActiveSection(sections[newIndex]);
                 });
 
-                // Add Alt+1-5 keybindings
-                for (let i = 1; i <= 5; i++) {
+                // Add Alt+1-6 keybindings
+                for (let i = 1; i <= 6; i++) {
                   editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
-                    const sections = ['graph', 'terminal', 'xterm', 'config', 'logs'];
+                    const sections = ['graph', 'terminal', 'xterm', 'config', 'logs', '3d'];
                     setActiveSection(sections[i - 1]);
                   });
                 }
@@ -1238,6 +1238,28 @@ export default function ReactGraph() {
               collapsedRuns={collapsedRuns}
               setCollapsedRuns={setCollapsedRuns}
               replayRun={replayRun}
+            />
+          </div>
+
+          {/* 3D Graph Section - Always mounted to prevent component re-instantiation */}
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              background: "#f0f0f0",
+              boxSizing: "border-box",
+              display: activeSection === '3d' ? "flex" : "none",
+              flexDirection: "column",
+            }}
+          >
+            <ThreeGraph 
+              nodes={nodes}
+              edges={edges}
+              selectedNodes={selectedNodes}
+              onNodeClick={(nodeId) => {
+                // Select node in 3D view and sync with 2D view
+                selectNodesByIds([nodeId]);
+              }}
             />
           </div>
         </div>
