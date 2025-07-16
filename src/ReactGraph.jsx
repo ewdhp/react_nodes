@@ -1013,7 +1013,7 @@ export default function ReactGraph() {
               <MonacoEditor
                 height="100%"
                 defaultLanguage="python"
-                theme="vs-light"
+                theme="vs-dark"
                 key={selectedNode?.id + (selectedNode?.data?.label || selectedNode?.id) + (nodeScripts[selectedNode?.id] || '')}
                 value={
                   selectedNode && nodeScripts[selectedNode.id] !== undefined
