@@ -1,12 +1,12 @@
-import React, { useCallback, useState, useEffect, useRef } from "react";
-import ReactFlow, { Controls, Background, applyNodeChanges } from "../../node_modules/reactflow/dist/esm";
+import React, { useCallback, useState, useEffect, useRef, useMemo } from "react";
+import ReactFlow, { Controls, Background, applyNodeChanges } from "reactflow";
 import "reactflow/dist/style.css";
-import Node from "./Node";
-import { NodeUpdateContext } from "../contexts/NodeUpdateContext";
-import LogPane from "./LogPane";
-import * as GraphStructures from "../GraphStructures";
+import Node from "./components/Node";
+import { NodeUpdateContext } from "./contexts/NodeUpdateContext";
+import LogPane from "./components/LogPane";
+import * as GraphStructures from "./GraphStructures";
 import MonacoEditor from "@monaco-editor/react";
-import StructureMenu from "./StructureMenu";
+import StructureMenu from "./components/StructureMenu";
 
 const initialNodes = [
 ];
@@ -180,35 +180,11 @@ export default function ReactGraph() {
     input.click();
   }, []);
 
-  // --- Mouse: multi-select, deselect, inline rename ---
-  // Use this callback for both click and rectangle selection to keep logic consistent
-  const selectNodesByIds = useCallback((ids) => {
-    setNodes(nds =>
-      nds.map(n => ({
-        ...n,
-        selected: ids.includes(n.id),
-      }))
-    );
-    setSelectedNodes(ids);
-  }, []);
-
-  const onNodeClick = useCallback((event, node) => {
-    let newSelected;
-    if (event.ctrlKey || event.metaKey || event.shiftKey) {
-      newSelected = selectedNodes.includes(node.id)
-        ? selectedNodes.filter(id => id !== node.id)
-        : [...selectedNodes, node.id];
-    } else {
-      newSelected = [node.id];
-    }
-    selectNodesByIds(newSelected);
-  }, [selectedNodes, selectNodesByIds]);
-
-  // Structure menu items (move above useEffect)
-  const structureItems = [
+  // Structure menu items (must be defined before useEffect that uses them)
+  const structureItems = useMemo(() => [
     { key: "Vertical", label: "Vertical", fn: GraphStructures.Vertical },
     { key: "Horizontal", label: "Horizontal", fn: GraphStructures.Horizontal }
-  ];
+  ], []);
 
   // --- Hotkey handler ---
   useEffect(() => {
@@ -375,6 +351,30 @@ export default function ReactGraph() {
     nodes, edges, selectedNodes, history, future, loadGraphFromFile,
     showStructureMenu, structureMenuIndex, structureItems, setNodes, setEdges, selectNodesByIds
   ]);
+
+  // --- Mouse: multi-select, deselect, inline rename ---
+  // Use this callback for both click and rectangle selection to keep logic consistent
+  const selectNodesByIds = useCallback((ids) => {
+    setNodes(nds =>
+      nds.map(n => ({
+        ...n,
+        selected: ids.includes(n.id),
+      }))
+    );
+    setSelectedNodes(ids);
+  }, []);
+
+  const onNodeClick = useCallback((event, node) => {
+    let newSelected;
+    if (event.ctrlKey || event.metaKey || event.shiftKey) {
+      newSelected = selectedNodes.includes(node.id)
+        ? selectedNodes.filter(id => id !== node.id)
+        : [...selectedNodes, node.id];
+    } else {
+      newSelected = [node.id];
+    }
+    selectNodesByIds(newSelected);
+  }, [selectedNodes, selectNodesByIds]);
 
   // --- Right-click to rename node ---
   // Remove renaming logic from here, now handled in Node component
@@ -548,7 +548,7 @@ export default function ReactGraph() {
     };
     window.addEventListener("node-rename", handleNodeRename);
     return () => window.removeEventListener("node-rename", handleNodeRename);
-  }, [setNodes]);
+  }, [setNodes, selectNodesByIds]);
 
   // Track the label for the selected node so the editor updates when the label changes
   const selectedNode = nodes.find(n => n.selected);
