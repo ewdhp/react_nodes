@@ -7,6 +7,7 @@ import LogPane from "./components/LogPane";
 import * as GraphStructures from "./GraphStructures";
 import MonacoEditor from "@monaco-editor/react";
 import StructureMenu from "./components/StructureMenu";
+import TopNavbar from "./components/TopNavbar";
 
 const initialNodes = [
 ];
@@ -46,39 +47,67 @@ export default function ReactGraph() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [showHotkeys, setShowHotkeys] = useState(true);
-  const [showLog, setShowLog] = useState(false); // Show LogPane by default
-  const [runCount] = useState(0); // setRunCount is unused, so remove setter
-  const [outputLog] = useState([]); // setOutputLog is unused, so remove setter
-  const [runExecutions] = useState({}); // setRunExecutions is unused, so remove setter
+  const [runCount] = useState(0);
+  const [outputLog] = useState([]);
+  const [runExecutions] = useState({});
   const [collapsedRuns, setCollapsedRuns] = useState({});
   const [showStructureMenu, setShowStructureMenu] = useState(false);
   const [structureMenuIndex, setStructureMenuIndex] = useState(0);
-  const [showEditor, setShowEditor] = useState(true);
+  
+  // Layout state - which section is currently active
+  const [activeSection, setActiveSection] = useState('graph'); // 'graph', 'script', 'logs', 'config'
+  const [jsonConfig, setJsonConfig] = useState({
+    ver: 1,
+    type: "graph_execute",
+    repeat: 1,
+    ssh: {
+      host: "localhost",
+      port: 22,
+      username: "ewd",
+      password: "2020"
+    },
+    nodes: [],
+    save_restore: {
+      enabled: true
+    }
+  });
+  
+  // Layer management state
+  const [layers, setLayers] = useState([
+    { id: 'layer-1', name: 'Layer 1', visible: true, locked: false }
+  ]);
+  const [activeLayer, setActiveLayer] = useState('layer-1');
+  const [showLayerPanel, setShowLayerPanel] = useState(false);
+  
   const reactFlowInstance = useRef(null);
 
-  // Toggle LogPane visibility with Ctrl+Alt+L
+  // Update JSON config when nodes change
   useEffect(() => {
-    const handleLogPaneToggle = (e) => {
-      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'l') {
-        e.preventDefault();
-        setShowLog((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", handleLogPaneToggle);
-    return () => window.removeEventListener("keydown", handleLogPaneToggle);
-  }, []);
-
-  // Toggle Monaco Editor Pane with Ctrl+Alt+C
-  useEffect(() => {
-    const handleEditorToggle = (e) => {
-      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'c') {
-        e.preventDefault();
-        setShowEditor((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", handleEditorToggle);
-    return () => window.removeEventListener("keydown", handleEditorToggle);
-  }, []);
+    const configNodes = nodes.map(node => ({
+      id: node.id,
+      inputs: {
+        host: "localhost",
+        port: 22,
+        username: "ewd",
+        password: "2020",
+        data: node.data?.inputs || "default_data"
+      },
+      args: node.data?.args || [`echo ${node.id} executed`],
+      script: `${node.id}.sh`,
+      parallel: false,
+      times: 1,
+      dependencies: edges
+        .filter(edge => edge.target === node.id)
+        .map(edge => edge.source),
+      maxRetries: 2,
+      timeoutSeconds: 10
+    }));
+    
+    setJsonConfig(prev => ({
+      ...prev,
+      nodes: configNodes
+    }));
+  }, [nodes, edges]);
 
   // Callback to update node data
   const onNodeUpdate = useCallback(
@@ -180,15 +209,93 @@ export default function ReactGraph() {
     input.click();
   }, []);
 
+  // Add layer creation function
+  const createNewLayer = useCallback(() => {
+    const newLayerId = `layer-${Date.now()}`;
+    const newLayer = {
+      id: newLayerId,
+      name: `Layer ${layers.length + 1}`,
+      visible: true,
+      locked: false
+    };
+    setLayers(prev => [...prev, newLayer]);
+    setActiveLayer(newLayerId);
+  }, [layers.length]);
+
+  // Toggle layer visibility
+  const toggleLayerVisibility = useCallback((layerId) => {
+    setLayers(prev => prev.map(layer => 
+      layer.id === layerId 
+        ? { ...layer, visible: !layer.visible }
+        : layer
+    ));
+  }, []);
+
+  // Filter nodes based on layer visibility
+  const visibleNodes = useMemo(() => {
+    const visibleLayerIds = layers.filter(layer => layer.visible).map(layer => layer.id);
+    return nodes.filter(node => {
+      const nodeLayer = node.data?.layer || 'layer-1';
+      return visibleLayerIds.includes(nodeLayer);
+    });
+  }, [nodes, layers]);
+
   // Structure menu items (must be defined before useEffect that uses them)
   const structureItems = useMemo(() => [
     { key: "Vertical", label: "Vertical", fn: GraphStructures.Vertical },
     { key: "Horizontal", label: "Horizontal", fn: GraphStructures.Horizontal }
   ], []);
 
+  // --- Mouse: multi-select, deselect, inline rename ---
+  // Use this callback for both click and rectangle selection to keep logic consistent
+  const selectNodesByIds = useCallback((ids) => {
+    setNodes(nds =>
+      nds.map(n => ({
+        ...n,
+        selected: ids.includes(n.id),
+      }))
+    );
+    setSelectedNodes(ids);
+  }, []);
+
   // --- Hotkey handler ---
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Handle section navigation with Alt+Ctrl+Left/Right (to avoid conflicts with normal editing)
+      if (e.ctrlKey && e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const sections = ['graph', 'script', 'logs', 'config'];
+        const currentIndex = sections.indexOf(activeSection);
+        let newIndex;
+        
+        if (e.key === 'ArrowRight') {
+          newIndex = (currentIndex + 1) % sections.length;
+        } else {
+          newIndex = (currentIndex - 1 + sections.length) % sections.length;
+        }
+        
+        setActiveSection(sections[newIndex]);
+        return false; // Prevent further event handling
+      }
+
+      // Handle Alt+1-4 navigation (this is safe as it doesn't conflict with editing)
+      if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[1-4]$/.test(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const sections = ['graph', 'script', 'logs', 'config'];
+        const sectionIndex = parseInt(e.key) - 1;
+        setActiveSection(sections[sectionIndex]);
+        return false;
+      }
+
+      // Only handle other hotkeys when not focused on input elements
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || 
+          e.target.classList.contains('monaco-editor') || 
+          e.target.closest('.monaco-editor')) {
+        return; // Let the input/editor handle the event
+      }
+
       // Undo
       if (e.ctrlKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -317,6 +424,50 @@ export default function ReactGraph() {
         return;
       }
 
+      // Layer hotkeys
+      // Create new layer: Ctrl+Shift+N
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        createNewLayer();
+        return;
+      }
+      
+      // Toggle layer panel: Ctrl+Alt+L
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        setShowLayerPanel(v => !v);
+        return;
+      }
+
+      // Switch to layer by number: Ctrl+1, Ctrl+2, etc.
+      if (e.ctrlKey && /^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        const layerIndex = parseInt(e.key) - 1;
+        if (layerIndex < layers.length) {
+          setActiveLayer(layers[layerIndex].id);
+        }
+        return;
+      }
+
+      // Move selected nodes to active layer: Ctrl+Shift+M
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "m" && selectedNodes.length > 0) {
+        e.preventDefault();
+        setNodes(nds =>
+          nds.map(n =>
+            selectedNodes.includes(n.id)
+              ? { ...n, data: { ...n.data, layer: activeLayer } }
+              : n
+          )
+        );
+        return;
+      }
+
+      // Switch between sections: Ctrl+Left/Right arrows (circular)
+      // NOTE: This is handled at the top of the function with higher priority
+
+      // Switch between sections: Alt+1, Alt+2, Alt+3, Alt+4 (legacy)
+      // NOTE: This is handled at the top of the function with higher priority
+
       // Structure menu navigation
       if (showStructureMenu) {
         if (e.key === "ArrowDown") {
@@ -345,24 +496,14 @@ export default function ReactGraph() {
         }
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    // Use capture: true to intercept events before they reach Monaco Editor
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [
     nodes, edges, selectedNodes, history, future, loadGraphFromFile,
-    showStructureMenu, structureMenuIndex, structureItems, setNodes, setEdges, selectNodesByIds
+    showStructureMenu, structureMenuIndex, structureItems, setNodes, setEdges, selectNodesByIds,
+    layers, activeLayer, createNewLayer, setActiveSection, activeSection
   ]);
-
-  // --- Mouse: multi-select, deselect, inline rename ---
-  // Use this callback for both click and rectangle selection to keep logic consistent
-  const selectNodesByIds = useCallback((ids) => {
-    setNodes(nds =>
-      nds.map(n => ({
-        ...n,
-        selected: ids.includes(n.id),
-      }))
-    );
-    setSelectedNodes(ids);
-  }, []);
 
   const onNodeClick = useCallback((event, node) => {
     let newSelected;
@@ -566,196 +707,423 @@ export default function ReactGraph() {
     );
   }, [selectedNode, setNodes]);
 
+  // Handler to update JSON config
+  const handleConfigChange = useCallback((value) => {
+    try {
+      const parsed = JSON.parse(value);
+      setJsonConfig(parsed);
+    } catch (error) {
+      // Invalid JSON, don't update
+      console.warn('Invalid JSON config');
+    }
+  }, []);
+
   return (
     <NodeUpdateContext.Provider value={onNodeUpdate}>
-      <div style={{ display: "flex", height: "100vh" }}>
-        {/* Graph on the left */}
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            position: "relative",
-            height: "100vh",
-            background: "#f8f8f8",
-            overflow: "hidden",
-            cursor: isSelecting ? 'default' : undefined
-          }}
-          onMouseDown={handlePaneMouseDown}
-        >
-          {/* Structure navbar */}
-          <StructureMenu
-            show={showStructureMenu}
-            structureMenuIndex={structureMenuIndex}
-            setStructureMenuIndex={setStructureMenuIndex}
-            setShowStructureMenu={setShowStructureMenu}
-            structureItems={structureItems}
-            setNodes={setNodes}
-            setEdges={setEdges}
-            nodes={nodes}
-            edges={edges}
-            selectNodesByIds={selectNodesByIds}
-          />
-          {/* Rectangle selection overlay */}
-          {selectionRect && (
+      <div style={{ 
+        display: "flex", 
+        flexDirection: "column", 
+        height: "100vh",
+        width: "100vw",
+        overflow: "hidden",
+        position: "relative"
+      }}>
+        {/* Top Navigation Bar */}
+        <TopNavbar activeSection={activeSection} setActiveSection={setActiveSection} />
+
+        {/* Main Content Area */}
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          {/* Graph Section */}
+          {activeSection === 'graph' && (
             <div
               style={{
-                position: 'absolute',
-                left: selectionRect.x,
-                top: selectionRect.y,
-                width: selectionRect.width,
-                height: selectionRect.height,
-                border: '2px dashed #00bcd4',
-                background: 'rgba(0,188,212,0.08)',
-                zIndex: 2000,
-                pointerEvents: 'none',
+                width: '100%',
+                height: '100%',
+                position: 'relative',
+                background: '#f8f8f8',
+                overflow: 'hidden',
+                cursor: isSelecting ? 'default' : undefined
               }}
-            />
+              onMouseDown={handlePaneMouseDown}
+            >
+              {/* Layer Panel */}
+              {showLayerPanel && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 20,
+                    left: 20,
+                    width: 250,
+                    background: 'rgba(255,255,255,0.95)',
+                    borderRadius: 8,
+                    padding: 16,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                    zIndex: 3000,
+                    maxHeight: '60vh',
+                    overflow: 'auto'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h3 style={{ margin: 0, fontSize: 16 }}>Layers</h3>
+                    <button
+                      onClick={() => setShowLayerPanel(false)}
+                      style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  
+                  <button
+                    onClick={createNewLayer}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      marginBottom: 12,
+                      background: '#007acc',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      fontSize: 14
+                    }}
+                  >
+                    + New Layer
+                  </button>
+
+                  {layers.map((layer, index) => (
+                    <div
+                      key={layer.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '8px 12px',
+                        marginBottom: 4,
+                        background: activeLayer === layer.id ? '#e3f2fd' : 'transparent',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        border: activeLayer === layer.id ? '1px solid #2196f3' : '1px solid transparent'
+                      }}
+                      onClick={() => setActiveLayer(layer.id)}
+                    >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleLayerVisibility(layer.id);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          marginRight: 8,
+                          fontSize: 16
+                        }}
+                      >
+                        {layer.visible ? '👁️' : '🙈'}
+                      </button>
+                      <span style={{ flex: 1, fontSize: 14 }}>
+                        {layer.name}
+                      </span>
+                      <span style={{ fontSize: 12, color: '#666', marginLeft: 8 }}>
+                        Ctrl+{index + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Rectangle selection overlay */}
+              {selectionRect && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: selectionRect.x,
+                    top: selectionRect.y,
+                    width: selectionRect.width,
+                    height: selectionRect.height,
+                    border: '2px dashed #00bcd4',
+                    background: 'rgba(0,188,212,0.08)',
+                    zIndex: 2000,
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
+              
+              <ReactFlow
+                nodes={visibleNodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                nodeTypes={nodeTypes}
+                onConnect={onConnect}
+                onEdgeClick={onEdgeClick}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                onNodeContextMenu={onNodeContextMenu}
+                onInit={(instance) => (reactFlowInstance.current = instance)}
+                fitView
+                onNodeDrag={handleNodeDrag}
+              >
+                <Controls />
+                <Background color="#f0f0f0" gap={20} />
+              </ReactFlow>
+
+              {/* Hotkeys overlay */}
+              {showHotkeys && (
+                <div
+                  style={{
+                    position: "fixed",
+                    top: 84,
+                    right: 24,
+                    zIndex: 2000,
+                    pointerEvents: "auto",
+                    background: "rgba(255,255,255,0.85)",
+                    borderRadius: 8,
+                    padding: 32,
+                    minWidth: 340,
+                    boxShadow: "0 2px 16px #0002",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start"
+                  }}
+                  onClick={() => setShowHotkeys(false)}
+                >
+                  <h2 style={{ marginTop: 0 }}>Keyboard Shortcuts</h2>
+                  <ul style={{
+                    lineHeight: 1.8,
+                    fontSize: 16,
+                    margin: 0,
+                    padding: 0,
+                    listStyle: 'none'
+                  }}>
+                    <li><b>Ctrl + ←/→</b>: Navigate sections (circular)</li>
+                    <li><b>Alt + 1-4</b>: Jump to specific section</li>
+                    <li><b>Ctrl + Alt + N</b>: New node menu</li>
+                    <li><b>Delete</b>: Delete selected node(s)</li>
+                    <li><b>Ctrl/Shift + Click</b>: Multi-select</li>
+                    <li><b>Escape</b>: Deselect all</li>
+                    <li><b>Double-click node</b>: Rename node</li>
+                    <li><b>Ctrl + Z</b>: Undo</li>
+                    <li><b>Ctrl + Y</b>: Redo</li>
+                    <li><b>Ctrl + S</b>: Save graph</li>
+                    <li><b>Ctrl + O</b>: Load graph</li>
+                    <li><b>Ctrl + Alt + H</b>: Show/hide hotkeys</li>
+                    <li><b>Ctrl + Alt + M</b>: Toggle structure menu</li>
+                    <li><b>Ctrl + Shift + N</b>: Create new layer</li>
+                    <li><b>Ctrl + Alt + L</b>: Toggle layer panel</li>
+                    <li><b>Ctrl + 1-9</b>: Switch to layer</li>
+                    <li><b>Ctrl + Shift + M</b>: Move selected to active layer</li>
+                  </ul>
+                </div>
+              )}
+
+              {/* Structure Menu */}
+              {showStructureMenu && (
+                <StructureMenu
+                  show={showStructureMenu}
+                  structureMenuIndex={structureMenuIndex}
+                  setStructureMenuIndex={setStructureMenuIndex}
+                  setShowStructureMenu={setShowStructureMenu}
+                  structureItems={structureItems}
+                  setNodes={setNodes}
+                  setEdges={setEdges}
+                  nodes={nodes}
+                  edges={edges}
+                  selectNodesByIds={selectNodesByIds}
+                />
+              )}
+            </div>
           )}
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes}
-            onConnect={onConnect}
-            onEdgeClick={onEdgeClick}
-            onNodeClick={onNodeClick}
-            onPaneClick={onPaneClick}
-            onNodeContextMenu={onNodeContextMenu}
-            onInit={(instance) => (reactFlowInstance.current = instance)}
-            fitView
-            onNodeDrag={handleNodeDrag}
-          >
-            <Controls />
-            <Background color="#f0f0f0" gap={20} />
-          </ReactFlow>
-          {/* Hotkeys overlay */}
-          {showHotkeys && (
+
+          {/* Script Editor Section */}
+          {activeSection === 'script' && selectedNode && (
             <div
               style={{
-                position: "fixed",
-                top: 24,
-                right: 24,
-                zIndex: 2000,
-                pointerEvents: "auto",
-                background: "rgba(255,255,255,0.85)",
-                borderRadius: 8,
-                padding: 32,
-                minWidth: 340,
-                boxShadow: "0 2px 16px #0002",
+                width: "100%",
+                height: "100%",
+                background: "#fafbfc",
+                boxSizing: "border-box",
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "flex-start"
               }}
-              onClick={() => setShowHotkeys(false)}
             >
-              <h2 style={{ marginTop: 0 }}>
-                Keyboard Shortcuts</h2>
-              <ul style={{
-                lineHeight: 1.8,
+              <div style={{
+                padding: "10px 18px",
+                borderBottom: "1px solid #e0e0e0",
+                background: "#fff",
+                fontWeight: "bold",
                 fontSize: 16,
-                margin: 0,
-                padding: 0,
-                listStyle: 'none'
+                color: "#222",
+                zIndex: 101,
               }}>
-                <li><b>Ctrl + Alt + N</b>: New node menu</li>
-                <li><b>Delete</b>: Delete selected node(s)</li>
-                <li><b>Ctrl/Shift + Click</b>: Multi-select</li>
-                <li><b>Escape</b>: Deselect all</li>
-                <li><b>Double-click node</b>: Rename node</li>
-                <li><b>Ctrl + Z</b>: Undo</li>
-                <li><b>Ctrl + Y</b>: Redo</li>
-                <li><b>Ctrl + S</b>: Save graph</li>
-                <li><b>Ctrl + O</b>: Load graph</li>
-                <li><b>Ctrl + Alt + H</b>: Show/hide</li>
-                <li><b>Ctrl + Alt + M</b>: Toggle menu</li>
-              </ul>
+                Script: {selectedNodeLabel}
+              </div>
+              <MonacoEditor
+                height="100%"
+                defaultLanguage="python"
+                theme="light"
+                key={selectedNode.id + selectedNodeLabel}
+                value={
+                  selectedNode.data?.script !== undefined
+                    ? selectedNode.data.script
+                    : `print("Hello from ${selectedNodeLabel.replace(/"/g, '\\"')}")`
+                }
+                onChange={handleScriptChange}
+                onMount={(editor, monaco) => {
+                  // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
+                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
+                    const sections = ['graph', 'script', 'logs', 'config'];
+                    const currentIndex = sections.indexOf(activeSection);
+                    const newIndex = (currentIndex - 1 + sections.length) % sections.length;
+                    setActiveSection(sections[newIndex]);
+                  });
+                  
+                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
+                    const sections = ['graph', 'script', 'logs', 'config'];
+                    const currentIndex = sections.indexOf(activeSection);
+                    const newIndex = (currentIndex + 1) % sections.length;
+                    setActiveSection(sections[newIndex]);
+                  });
+
+                  // Add Alt+1-4 keybindings
+                  for (let i = 1; i <= 4; i++) {
+                    editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
+                      const sections = ['graph', 'script', 'logs', 'config'];
+                      setActiveSection(sections[i - 1]);
+                    });
+                  }
+                }}
+                options={{
+                  fontSize: 15,
+                  minimap: { enabled: false },
+                  wordWrap: "on",
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  lineNumbers: "on",
+                  fontFamily: "monospace",
+                  smoothScrolling: true,
+                  tabSize: 4,
+                  padding: { top: 12, bottom: 12 }
+                }}
+              />
             </div>
           )}
-          {/* Terminal tabs overlay */}
-          {/* {showTerminal && (
+
+          {/* Script Editor Placeholder when no node selected */}
+          {activeSection === 'script' && !selectedNode && (
             <div
               style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '50%',
-                height: '100vh',
-                zIndex: 9999,
-                background: 'rgba(20,20,20,0.97)',
-                pointerEvents: 'auto',
-                display: 'flex',
-                flexDirection: 'column'
+                width: "100%",
+                height: "100%",
+                background: "#fafbfc",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexDirection: "column",
+                color: "#666",
+                fontSize: 18
               }}
             >
-              <TerminalTabs />
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                <polyline points="4,17 10,11 4,5"/>
+                <line x1="12" y1="19" x2="20" y2="19"/>
+              </svg>
+              <p style={{ marginTop: 16 }}>Select a node to edit its script</p>
             </div>
-          )} */}
-        </div>
-        {/* Monaco Editor Pane for selected node */}
-        {selectedNode && showEditor && (
-          <div
-            style={{
-              width: "50%",
-              height: "100%",
-              background: "#fafbfc",
-              borderLeft: "1px solid #e0e0e0",
-              boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div style={{
-              padding: "10px 18px",
-              borderBottom: "1px solid #e0e0e0",
-              background: "#fff",
-              fontWeight: "bold",
-              fontSize: 16,
-              color: "#222",
-              zIndex: 101,
-            }}>
-              Script: {selectedNodeLabel}
+          )}
+
+          {/* Logs Section */}
+          {activeSection === 'logs' && (
+            <div style={{ width: '100%', height: '100%' }}>
+              <LogPane
+                showLog={true}
+                runCount={runCount}
+                outputLog={outputLog}
+                runExecutions={runExecutions}
+                collapsedRuns={collapsedRuns}
+                setCollapsedRuns={setCollapsedRuns}
+                replayRun={replayRun}
+              />
             </div>
-            <MonacoEditor
-              height="100%"
-              defaultLanguage="python"
-              theme="light"
-              key={selectedNode.id + selectedNodeLabel}
-              value={
-                selectedNode.data?.script !== undefined
-                  ? selectedNode.data.script
-                  : `print("Hello from ${selectedNodeLabel.replace(/"/g, '\\"')}")`
-              }
-              onChange={handleScriptChange}
-              options={{
-                fontSize: 15,
-                minimap: { enabled: false },
-                wordWrap: "on",
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                lineNumbers: "on",
-                fontFamily: "monospace",
-                smoothScrolling: true,
-                tabSize: 4,
-                padding: { top: 12, bottom: 12 }
+          )}
+
+          {/* JSON Config Section */}
+          {activeSection === 'config' && (
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                background: "#fafbfc",
+                boxSizing: "border-box",
+                display: "flex",
+                flexDirection: "column",
               }}
-            />
-          </div>
-        )}
-        {/* LogPane on the right */}
-        {(!selectedNode || !showEditor) && (
-          <LogPane
-            showLog={showLog}
-            runCount={runCount}
-            outputLog={outputLog}
-            runExecutions={runExecutions}
-            collapsedRuns={collapsedRuns}
-            setCollapsedRuns={setCollapsedRuns}
-            replayRun={replayRun}
-          />
-        )}
+            >
+              <div style={{
+                padding: "10px 18px",
+                borderBottom: "1px solid #e0e0e0",
+                background: "#fff",
+                fontWeight: "bold",
+                fontSize: 16,
+                color: "#222",
+                zIndex: 101,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <span>MServer JSON Configuration</span>
+                <span style={{ fontSize: 12, color: '#666' }}>
+                  Updates automatically based on graph nodes
+                </span>
+              </div>
+              <MonacoEditor
+                height="100%"
+                defaultLanguage="json"
+                theme="light"
+                value={JSON.stringify(jsonConfig, null, 2)}
+                onChange={handleConfigChange}
+                onMount={(editor, monaco) => {
+                  // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
+                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
+                    const sections = ['graph', 'script', 'logs', 'config'];
+                    const currentIndex = sections.indexOf(activeSection);
+                    const newIndex = (currentIndex - 1 + sections.length) % sections.length;
+                    setActiveSection(sections[newIndex]);
+                  });
+                  
+                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
+                    const sections = ['graph', 'script', 'logs', 'config'];
+                    const currentIndex = sections.indexOf(activeSection);
+                    const newIndex = (currentIndex + 1) % sections.length;
+                    setActiveSection(sections[newIndex]);
+                  });
+
+                  // Add Alt+1-4 keybindings
+                  for (let i = 1; i <= 4; i++) {
+                    editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
+                      const sections = ['graph', 'script', 'logs', 'config'];
+                      setActiveSection(sections[i - 1]);
+                    });
+                  }
+                }}
+                options={{
+                  fontSize: 15,
+                  minimap: { enabled: false },
+                  wordWrap: "on",
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  lineNumbers: "on",
+                  fontFamily: "monospace",
+                  smoothScrolling: true,
+                  tabSize: 2,
+                  padding: { top: 12, bottom: 12 },
+                  formatOnPaste: true,
+                  formatOnType: true
+                }}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </NodeUpdateContext.Provider>
   );
 }
-
