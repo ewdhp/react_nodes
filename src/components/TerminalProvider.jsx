@@ -16,7 +16,7 @@ export const TerminalProvider = ({ children }) => {
 
         console.log(`Creating terminal with ID "${id}"...`);
 
-        const socket = new WebSocket('wss://localhost:5500');
+        const socket = new WebSocket('wss://localhost:5001');
         const inputBuffer = { current: '' };
 
         terminals.current.set(id, { socket, inputBuffer });

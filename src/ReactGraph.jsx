@@ -8,6 +8,7 @@ import * as GraphStructures from "./GraphStructures";
 import MonacoEditor from "@monaco-editor/react";
 import StructureMenu from "./components/StructureMenu";
 import TopNavbar from "./components/TopNavbar";
+import Terminal from "./components/XtermTerminal";
 
 const initialNodes = [
 ];
@@ -55,7 +56,8 @@ export default function ReactGraph() {
   const [structureMenuIndex, setStructureMenuIndex] = useState(0);
   
   // Layout state - which section is currently active
-  const [activeSection, setActiveSection] = useState('graph'); // 'graph', 'script', 'logs', 'config'
+  const [activeSection, setActiveSection] = useState('graph'); // 'graph', 'terminal', 'config'
+  const [isTerminalMaximized, setIsTerminalMaximized] = useState(false);
   const [jsonConfig, setJsonConfig] = useState({
     ver: 1,
     type: "graph_execute",
@@ -78,6 +80,9 @@ export default function ReactGraph() {
   ]);
   const [activeLayer, setActiveLayer] = useState('layer-1');
   const [showLayerPanel, setShowLayerPanel] = useState(false);
+  
+  // Script storage separate from graph data
+  const [nodeScripts, setNodeScripts] = useState({});
   
   const reactFlowInstance = useRef(null);
 
@@ -246,6 +251,40 @@ export default function ReactGraph() {
     { key: "Horizontal", label: "Horizontal", fn: GraphStructures.Horizontal }
   ], []);
 
+  // Save scripts separately from graph
+  const saveScripts = useCallback(() => {
+    const data = JSON.stringify(nodeScripts, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `scripts-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [nodeScripts]);
+
+  // Load scripts from file
+  const loadScripts = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const scripts = JSON.parse(e.target.result);
+          setNodeScripts(scripts);
+        } catch (err) {
+          alert("Invalid scripts file.");
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, []);
+
   // --- Mouse: multi-select, deselect, inline rename ---
   // Use this callback for both click and rectangle selection to keep logic consistent
   const selectNodesByIds = useCallback((ids) => {
@@ -265,7 +304,7 @@ export default function ReactGraph() {
       if (e.ctrlKey && e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
         e.stopPropagation();
-        const sections = ['graph', 'script', 'logs', 'config'];
+        const sections = ['graph', 'terminal', 'config'];
         const currentIndex = sections.indexOf(activeSection);
         let newIndex;
         
@@ -279,11 +318,11 @@ export default function ReactGraph() {
         return false; // Prevent further event handling
       }
 
-      // Handle Alt+1-4 navigation (this is safe as it doesn't conflict with editing)
-      if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[1-4]$/.test(e.key)) {
+      // Handle Alt+1-3 navigation (this is safe as it doesn't conflict with editing)
+      if (e.altKey && !e.ctrlKey && !e.shiftKey && /^[1-3]$/.test(e.key)) {
         e.preventDefault();
         e.stopPropagation();
-        const sections = ['graph', 'script', 'logs', 'config'];
+        const sections = ['graph', 'terminal', 'config'];
         const sectionIndex = parseInt(e.key) - 1;
         setActiveSection(sections[sectionIndex]);
         return false;
@@ -333,10 +372,22 @@ export default function ReactGraph() {
         URL.revokeObjectURL(url);
         return;
       }
+      // Save Scripts
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        saveScripts();
+        return;
+      }
       // Load
       if (e.ctrlKey && e.key.toLowerCase() === "o") {
         e.preventDefault();
         loadGraphFromFile();
+        return;
+      }
+      // Load Scripts
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        loadScripts();
         return;
       }
       // Delete selected nodes/edges
@@ -502,7 +553,7 @@ export default function ReactGraph() {
   }, [
     nodes, edges, selectedNodes, history, future, loadGraphFromFile,
     showStructureMenu, structureMenuIndex, structureItems, setNodes, setEdges, selectNodesByIds,
-    layers, activeLayer, createNewLayer, setActiveSection, activeSection
+    layers, activeLayer, createNewLayer, setActiveSection, activeSection, saveScripts, loadScripts
   ]);
 
   const onNodeClick = useCallback((event, node) => {
@@ -695,17 +746,14 @@ export default function ReactGraph() {
   const selectedNode = nodes.find(n => n.selected);
   const selectedNodeLabel = selectedNode?.data?.label || selectedNode?.id;
 
-  // Handler to update the script property of a node
+  // Handler to update the script property of a node (stored separately from graph data)
   const handleScriptChange = useCallback((value) => {
     if (!selectedNode) return;
-    setNodes(nds =>
-      nds.map(n =>
-        n.id === selectedNode.id
-          ? { ...n, data: { ...n.data, script: value } }
-          : n
-      )
-    );
-  }, [selectedNode, setNodes]);
+    setNodeScripts(prev => ({
+      ...prev,
+      [selectedNode.id]: value
+    }));
+  }, [selectedNode]);
 
   // Handler to update JSON config
   const handleConfigChange = useCallback((value) => {
@@ -716,6 +764,11 @@ export default function ReactGraph() {
       // Invalid JSON, don't update
       console.warn('Invalid JSON config');
     }
+  }, []);
+
+  // Toggle terminal maximize/minimize
+  const toggleTerminalMaximize = useCallback(() => {
+    setIsTerminalMaximized(prev => !prev);
   }, []);
 
   return (
@@ -906,6 +959,8 @@ export default function ReactGraph() {
                     <li><b>Ctrl + Y</b>: Redo</li>
                     <li><b>Ctrl + S</b>: Save graph</li>
                     <li><b>Ctrl + O</b>: Load graph</li>
+                    <li><b>Ctrl + Shift + S</b>: Save scripts</li>
+                    <li><b>Ctrl + Shift + O</b>: Load scripts</li>
                     <li><b>Ctrl + Alt + H</b>: Show/hide hotkeys</li>
                     <li><b>Ctrl + Alt + M</b>: Toggle structure menu</li>
                     <li><b>Ctrl + Shift + N</b>: Create new layer</li>
@@ -934,82 +989,94 @@ export default function ReactGraph() {
             </div>
           )}
 
-          {/* Script Editor Section */}
-          {activeSection === 'script' && selectedNode && (
+          {/* Terminal Section */}
+          {activeSection === 'terminal' && selectedNode && (
             <div
               style={{
                 width: "100%",
                 height: "100%",
-                background: "#fafbfc",
+                background: "#1e1e1e",
                 boxSizing: "border-box",
                 display: "flex",
                 flexDirection: "column",
               }}
             >
+              {/* Script Editor - Top Half */}
               <div style={{
-                padding: "10px 18px",
-                borderBottom: "1px solid #e0e0e0",
-                background: "#fff",
-                fontWeight: "bold",
-                fontSize: 16,
-                color: "#222",
-                zIndex: 101,
+                height: isTerminalMaximized ? "0%" : "50%",
+                display: isTerminalMaximized ? "none" : "flex",
+                flexDirection: "column",
+                borderBottom: "2px solid #3e3e3e",
+                transition: "height 0.3s ease"
               }}>
-                Script: {selectedNodeLabel}
-              </div>
-              <MonacoEditor
-                height="100%"
-                defaultLanguage="python"
-                theme="light"
-                key={selectedNode.id + selectedNodeLabel}
-                value={
-                  selectedNode.data?.script !== undefined
-                    ? selectedNode.data.script
-                    : `print("Hello from ${selectedNodeLabel.replace(/"/g, '\\"')}")`
-                }
-                onChange={handleScriptChange}
-                onMount={(editor, monaco) => {
-                  // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
-                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
-                    const sections = ['graph', 'script', 'logs', 'config'];
-                    const currentIndex = sections.indexOf(activeSection);
-                    const newIndex = (currentIndex - 1 + sections.length) % sections.length;
-                    setActiveSection(sections[newIndex]);
-                  });
-                  
-                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
-                    const sections = ['graph', 'script', 'logs', 'config'];
-                    const currentIndex = sections.indexOf(activeSection);
-                    const newIndex = (currentIndex + 1) % sections.length;
-                    setActiveSection(sections[newIndex]);
-                  });
-
-                  // Add Alt+1-4 keybindings
-                  for (let i = 1; i <= 4; i++) {
-                    editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
-                      const sections = ['graph', 'script', 'logs', 'config'];
-                      setActiveSection(sections[i - 1]);
-                    });
+                <MonacoEditor
+                  height="100%"
+                  defaultLanguage="python"
+                  theme="vs-dark"
+                  key={selectedNode.id + selectedNodeLabel + (nodeScripts[selectedNode.id] || '')}
+                  value={
+                    nodeScripts[selectedNode.id] !== undefined
+                      ? nodeScripts[selectedNode.id]
+                      : `print("Hello from ${selectedNodeLabel.replace(/"/g, '\\"')}")`
                   }
-                }}
-                options={{
-                  fontSize: 15,
-                  minimap: { enabled: false },
-                  wordWrap: "on",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  lineNumbers: "on",
-                  fontFamily: "monospace",
-                  smoothScrolling: true,
-                  tabSize: 4,
-                  padding: { top: 12, bottom: 12 }
-                }}
-              />
+                  onChange={handleScriptChange}
+                  onMount={(editor, monaco) => {
+                    // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
+                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
+                      const sections = ['graph', 'terminal', 'config'];
+                      const currentIndex = sections.indexOf(activeSection);
+                      const newIndex = (currentIndex - 1 + sections.length) % sections.length;
+                      setActiveSection(sections[newIndex]);
+                    });
+                    
+                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
+                      const sections = ['graph', 'terminal', 'config'];
+                      const currentIndex = sections.indexOf(activeSection);
+                      const newIndex = (currentIndex + 1) % sections.length;
+                      setActiveSection(sections[newIndex]);
+                    });
+
+                    // Add Alt+1-3 keybindings
+                    for (let i = 1; i <= 3; i++) {
+                      editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
+                        const sections = ['graph', 'terminal', 'config'];
+                        setActiveSection(sections[i - 1]);
+                      });
+                    }
+                  }}
+                  options={{
+                    fontSize: 15,
+                    minimap: { enabled: false },
+                    wordWrap: "on",
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    lineNumbers: "on",
+                    fontFamily: "monospace",
+                    smoothScrolling: true,
+                    tabSize: 4,
+                    padding: { top: 12, bottom: 12 }
+                  }}
+                />
+              </div>
+
+              {/* Terminal - Bottom Half */}
+              <div style={{
+                height: isTerminalMaximized ? "100%" : "50%",
+                minHeight: 0,
+                transition: "height 0.3s ease"
+              }}>
+                <Terminal 
+                  nodeId={selectedNode.id} 
+                  nodeName={selectedNodeLabel}
+                  isMaximized={isTerminalMaximized}
+                  onToggleMaximize={toggleTerminalMaximize}
+                />
+              </div>
             </div>
           )}
 
-          {/* Script Editor Placeholder when no node selected */}
-          {activeSection === 'script' && !selectedNode && (
+          {/* Terminal Placeholder when no node selected */}
+          {activeSection === 'terminal' && !selectedNode && (
             <div
               style={{
                 width: "100%",
@@ -1027,22 +1094,7 @@ export default function ReactGraph() {
                 <polyline points="4,17 10,11 4,5"/>
                 <line x1="12" y1="19" x2="20" y2="19"/>
               </svg>
-              <p style={{ marginTop: 16 }}>Select a node to edit its script</p>
-            </div>
-          )}
-
-          {/* Logs Section */}
-          {activeSection === 'logs' && (
-            <div style={{ width: '100%', height: '100%' }}>
-              <LogPane
-                showLog={true}
-                runCount={runCount}
-                outputLog={outputLog}
-                runExecutions={runExecutions}
-                collapsedRuns={collapsedRuns}
-                setCollapsedRuns={setCollapsedRuns}
-                replayRun={replayRun}
-              />
+              <p style={{ marginTop: 16 }}>Select a node to view its terminal</p>
             </div>
           )}
 
@@ -1084,23 +1136,23 @@ export default function ReactGraph() {
                 onMount={(editor, monaco) => {
                   // Add custom keybindings for navigation (Alt+Ctrl+Arrows to avoid conflicts)
                   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.LeftArrow, () => {
-                    const sections = ['graph', 'script', 'logs', 'config'];
+                    const sections = ['graph', 'terminal', 'config'];
                     const currentIndex = sections.indexOf(activeSection);
                     const newIndex = (currentIndex - 1 + sections.length) % sections.length;
                     setActiveSection(sections[newIndex]);
                   });
                   
                   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.RightArrow, () => {
-                    const sections = ['graph', 'script', 'logs', 'config'];
+                    const sections = ['graph', 'terminal', 'config'];
                     const currentIndex = sections.indexOf(activeSection);
                     const newIndex = (currentIndex + 1) % sections.length;
                     setActiveSection(sections[newIndex]);
                   });
 
-                  // Add Alt+1-4 keybindings
-                  for (let i = 1; i <= 4; i++) {
+                  // Add Alt+1-3 keybindings
+                  for (let i = 1; i <= 3; i++) {
                     editor.addCommand(monaco.KeyMod.Alt | (monaco.KeyCode.Digit0 + i), () => {
-                      const sections = ['graph', 'script', 'logs', 'config'];
+                      const sections = ['graph', 'terminal', 'config'];
                       setActiveSection(sections[i - 1]);
                     });
                   }

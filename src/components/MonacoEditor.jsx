@@ -34,7 +34,7 @@ const MonacoEditor = ({ data, style, onSend }) => {
                     width="600px"
                     defaultLanguage={data?.language || "javascript"}
                     value={data?.value || ""}
-                    theme="vs-light"
+                    theme="vs-dark"
                     options={{
                         fontFamily: "monospace",
                         fontSize: 12,
