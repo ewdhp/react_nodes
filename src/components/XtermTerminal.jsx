@@ -6,17 +6,25 @@ import 'xterm/css/xterm.css';
 import { useTerminalSocket } from './TerminalProvider';
 
 const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
-  const { createTerminal, sendInput, subscribeToOutput } = useTerminalSocket();
+  const { createTerminal, sendInput, subscribeToOutput, getTerminalHistory } = useTerminalSocket();
   const terminalRef = useRef(null);
   const xtermRef = useRef(null);
   const fitAddonRef = useRef(null);
   const terminalId = `node-${nodeId}`;
+  const isInitialized = useRef(false);
+  const terminalInstanceRef = useRef(null);
 
+  // Initialize terminal only once when component mounts
   useEffect(() => {
+    // Only create terminal instance once
+    if (terminalInstanceRef.current) return;
+
+    console.log('Creating new terminal instance for:', terminalId);
+    
     // Initialize xterm.js terminal
     const terminal = new Terminal({
       cursorBlink: true,
-      cursorStyle: 'default',
+      cursorStyle: 'block', // Changed from 'default' to 'block'
       fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
       fontSize: 14,
       lineHeight: 1.4,
@@ -41,10 +49,10 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
     
     xtermRef.current = terminal;
     fitAddonRef.current = fitAddon;
+    terminalInstanceRef.current = terminal;
 
     // Local input buffer to avoid state updates causing re-renders
     let currentInputBuffer = '';
-    let initFrame = null;
 
     // Open terminal in the DOM element
     if (terminalRef.current) {
@@ -68,10 +76,25 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
       }, 100);
       
       // Immediate initialization without delays - terminal should be cached and ready
-      initFrame = requestAnimationFrame(() => {
+      const initFrame = requestAnimationFrame(() => {
         try {
           fitAddon.fit();
           terminal.focus(); // Ensure terminal has focus for keyboard input
+          
+          // Load existing history after terminal is properly initialized
+          if (!isInitialized.current) {
+            createTerminal(terminalId);
+            
+            const history = getTerminalHistory(terminalId);
+            console.log('Checking terminal history for:', terminalId, 'History length:', history?.length || 0);
+            if (history) {
+              console.log('Loading terminal history:', history.substring(0, 100) + '...');
+              terminal.write(history);
+            } else {
+              console.log('No history found for terminal:', terminalId);
+            }
+            isInitialized.current = true;
+          }
           
           // Let the server handle all initial messages and prompts
         } catch (error) {
@@ -121,9 +144,6 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
       }
     });
 
-    // Create WebSocket terminal connection
-    createTerminal(terminalId);
-
     // Add keyboard event listener for Ctrl+Alt+= to toggle maximize
     const handleKeyDown = (e) => {
       console.log('Key event:', e.key, 'Ctrl:', e.ctrlKey, 'Alt:', e.altKey, 'Target:', e.target);
@@ -141,100 +161,104 @@ const XtermTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
     document.addEventListener('keydown', handleKeyDown, true); // Use capture phase
 
     // Subscribe to output from WebSocket
-    const unsubscribe = subscribeToOutput(terminalId, (data) => {
-      console.log('XTerm received raw data:', JSON.stringify(data));
-      console.log('XTerm received raw data (readable):', data);
-      
-      // Process and write data to terminal
-      if (data) {
-        // For xterm, we can preserve more formatting since it handles ANSI codes
-        // Only clean up problematic sequences
-        let processedData = data;
+    const unsubscribe = subscribeToOutput(terminalId, (data, metadata = {}) => {
+      // Only add new data, not historical data (which is already loaded above)
+      if (!metadata.isHistory) {
+        console.log('XTerm received new data:', JSON.stringify(data));
+        console.log('XTerm received new data (readable):', data);
         
-        console.log('Before processing:', JSON.stringify(processedData));
-        
-        // Handle common ls output formatting issues
-        if (data.includes('drwxr-xr-x') || data.includes('-rw-r--r--') || data.includes('total ')) {
-          // Add line breaks for directory listings if they're missing
-          processedData = data
-            .replace(/(drwxr-xr-x|d---------|-rw-r--r--|lrwxrwxrwx|[d-][rwx-]{9})/g, '\r\n$1')
-            .replace(/^\r\n/, ''); // Remove leading line break
-        }
-        
-        // More aggressive cleanup - remove connection messages entirely
-        processedData = processedData
-          // Remove WebSocket connection messages completely
-          .replace(/Connected to WebSocket server[\r\n\s]*.*?[\r\n]*/g, '')
-          // Remove SSH connection messages completely
-          .replace(/\[SSH CONNECTED\][\r\n\s]*.*?[\r\n]*/g, '')
-          // Clean up multiple consecutive prompts
-          .replace(/(\$ )+/g, '$ ')
-          .replace(/(> )+/g, '> ')
-          // Remove standalone > prompts on their own lines
-          .replace(/[\r\n]\s*>\s*[\r\n]/g, '\r\n')
-          .replace(/^>\s*[\r\n]/g, '')
-          // Clean up line breaks before prompts
-          .replace(/(\r?\n)+(\$ )/g, '\r\n$2')
-          .replace(/(\r?\n)+(> )/g, '\r\n$2')
-          // Limit consecutive line breaks
-          .replace(/(\r?\n){3,}/g, '\r\n\r\n')
-          // Remove alternating prompts
-          .replace(/(\$ \r?\n> )/g, '$ ')
-          .replace(/(> \r?\n\$ )/g, '$ ');
-        
-        console.log('After processing:', JSON.stringify(processedData));
-        
-        // Skip writing if it's just a standalone prompt or connection message
-        const isJustPrompt = /^[\s]*[$>]\s*$/.test(processedData.trim());
-        const isEmptyOrWhitespace = /^\s*$/.test(processedData);
-        const isConnectionMessage = data.includes('CONNECTED') || 
-                                   data.includes('Welcome to') || 
-                                   data.includes('Type commands') || 
-                                   data.includes('WebSocket server') ||
-                                   /^Connected to WebSocket server\s*$/m.test(data.trim());
-        
-        if (!isJustPrompt && !isEmptyOrWhitespace && !isConnectionMessage) {
-          terminal.write(processedData);
-        } else {
-          console.log('Skipped writing standalone prompt, empty data, or connection message:', JSON.stringify(processedData));
-        }
-        
-        // Only add prompt if the output doesn't already contain or end with a prompt
-        const hasPromptInData = processedData.includes('$ ') || processedData.includes('> ');
-        const endsWithPrompt = processedData.endsWith('$ ') || 
-                              processedData.endsWith('\n$ ') || 
-                              processedData.endsWith('\r\n$ ') ||
-                              processedData.endsWith('> ') ||
-                              processedData.endsWith('\n> ') ||
-                              processedData.endsWith('\r\n> ');
-        
-        if (!isConnectionMessage && 
-            !isJustPrompt &&
-            !isEmptyOrWhitespace &&
-            !hasPromptInData &&
-            !endsWithPrompt &&
-            processedData.trim().length > 0) {
-          console.log('Adding prompt after:', JSON.stringify(processedData));
-          terminal.write('\r\n');
-        }
-        
-        // If it's a connection message, just show the prompt once
-        if (isConnectionMessage) {
-          //terminal.write('> ');
+        // Process and write data to terminal
+        if (data) {
+          // For xterm, we can preserve more formatting since it handles ANSI codes
+          // Only clean up problematic sequences
+          let processedData = data;
+          
+          console.log('Before processing:', JSON.stringify(processedData));
+          
+          // Handle common ls output formatting issues
+          if (data.includes('drwxr-xr-x') || data.includes('-rw-r--r--') || data.includes('total ')) {
+            // Add line breaks for directory listings if they're missing
+            processedData = data
+              .replace(/(drwxr-xr-x|d---------|-rw-r--r--|lrwxrwxrwx|[d-][rwx-]{9})/g, '\r\n$1')
+              .replace(/^\r\n/, ''); // Remove leading line break
+          }
+          
+          // More aggressive cleanup - remove connection messages entirely
+          processedData = processedData
+            // Remove WebSocket connection messages completely
+            .replace(/Connected to WebSocket server[\r\n\s]*.*?[\r\n]*/g, '')
+            // Remove SSH connection messages completely
+            .replace(/\[SSH CONNECTED\][\r\n\s]*.*?[\r\n]*/g, '')
+            // Clean up multiple consecutive prompts
+            .replace(/(\$ )+/g, '$ ')
+            .replace(/(> )+/g, '> ')
+            // Remove standalone > prompts on their own lines
+            .replace(/[\r\n]\s*>\s*[\r\n]/g, '\r\n')
+            .replace(/^>\s*[\r\n]/g, '')
+            // Clean up line breaks before prompts
+            .replace(/(\r?\n)+(\$ )/g, '\r\n$2')
+            .replace(/(\r?\n)+(> )/g, '\r\n$2')
+            // Limit consecutive line breaks
+            .replace(/(\r?\n){3,}/g, '\r\n\r\n')
+            // Remove alternating prompts
+            .replace(/(\$ \r?\n> )/g, '$ ')
+            .replace(/(> \r?\n\$ )/g, '$ ');
+          
+          console.log('After processing:', JSON.stringify(processedData));
+          
+          // Skip writing if it's just a standalone prompt or connection message
+          const isJustPrompt = /^[\s]*[$>]\s*$/.test(processedData.trim());
+          const isEmptyOrWhitespace = /^\s*$/.test(processedData);
+          const isConnectionMessage = data.includes('CONNECTED') || 
+                                     data.includes('Welcome to') || 
+                                     data.includes('Type commands') || 
+                                     data.includes('WebSocket server') ||
+                                     /^Connected to WebSocket server\s*$/m.test(data.trim());
+          
+          if (!isJustPrompt && !isEmptyOrWhitespace && !isConnectionMessage) {
+            terminal.write(processedData);
+          } else {
+            console.log('Skipped writing standalone prompt, empty data, or connection message:', JSON.stringify(processedData));
+          }
+          
+          // Only add prompt if the output doesn't already contain or end with a prompt
+          const hasPromptInData = processedData.includes('$ ') || processedData.includes('> ');
+          const endsWithPrompt = processedData.endsWith('$ ') || 
+                                processedData.endsWith('\n$ ') || 
+                                processedData.endsWith('\r\n$ ') ||
+                                processedData.endsWith('> ') ||
+                                processedData.endsWith('\n> ') ||
+                                processedData.endsWith('\r\n> ');
+          
+          if (!isConnectionMessage && 
+              !isJustPrompt &&
+              !isEmptyOrWhitespace &&
+              !hasPromptInData &&
+              !endsWithPrompt &&
+              processedData.trim().length > 0) {
+            console.log('Adding prompt after:', JSON.stringify(processedData));
+            terminal.write('\r\n');
+          }
+          
+          // If it's a connection message, just show the prompt once
+          if (isConnectionMessage) {
+            //terminal.write('> ');
+          }
         }
       }
-    });
+    }, { includeHistory: false }); // Don't include history in subscription
 
     // Cleanup on unmount
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
       unsubscribe();
-      if (initFrame) {
-        cancelAnimationFrame(initFrame);
-      }
       terminal.dispose();
+      terminalInstanceRef.current = null;
+      xtermRef.current = null;
+      fitAddonRef.current = null;
+      isInitialized.current = false;
     };
-  }, [nodeId, nodeName, createTerminal, sendInput, subscribeToOutput, terminalId, onToggleMaximize]); // Remove inputBuffer from dependencies
+  }, []); // Empty dependency array - only run once on mount
 
   // Handle terminal resize and focus
   useEffect(() => {

@@ -7,6 +7,7 @@ const TerminalContext = createContext();
 export const TerminalProvider = ({ children }) => {
     const terminals = useRef(new Map());
     const outputListeners = useRef(new Map());
+    const terminalOutputHistory = useRef(new Map()); // Store output history for each terminal
 
     const createTerminal = (id) => {
         if (terminals.current.has(id)) {
@@ -78,9 +79,16 @@ export const TerminalProvider = ({ children }) => {
     };
 
     const sendToListeners = (id, data) => {
+        // Store the data in history
+        if (!terminalOutputHistory.current.has(id)) {
+            terminalOutputHistory.current.set(id, '');
+        }
+        terminalOutputHistory.current.set(id, terminalOutputHistory.current.get(id) + data);
+        
         const listeners = outputListeners.current.get(id);
         if (listeners) {
-            listeners.forEach((cb) => cb(data));
+            // Send new data to listeners (not marked as history)
+            listeners.forEach((cb) => cb(data, { isHistory: false }));
         }
     };
 
@@ -100,11 +108,21 @@ export const TerminalProvider = ({ children }) => {
     };
 
     // Subscribe to output for a terminal
-    const subscribeToOutput = (id, callback) => {
+    const subscribeToOutput = (id, callback, options = {}) => {
         if (!outputListeners.current.has(id)) {
             outputListeners.current.set(id, []);
         }
         outputListeners.current.get(id).push(callback);
+        
+        // Send existing history to new subscriber only if requested
+        if (options.includeHistory !== false) {
+            const history = terminalOutputHistory.current.get(id);
+            if (history) {
+                // Mark this as historical data
+                callback(history, { isHistory: true });
+            }
+        }
+        
         // Return unsubscribe function
         return () => {
             const arr = outputListeners.current.get(id) || [];
@@ -123,6 +141,14 @@ export const TerminalProvider = ({ children }) => {
         return Array.from(terminals.current.keys());
     };
 
+    const getTerminalHistory = (id) => {
+        return terminalOutputHistory.current.get(id) || '';
+    };
+
+    const clearTerminalHistory = (id) => {
+        terminalOutputHistory.current.set(id, '');
+    };
+
     const disposeTerminal = (id) => {
         const terminalData = terminals.current.get(id);
         if (terminalData) {
@@ -130,6 +156,7 @@ export const TerminalProvider = ({ children }) => {
             terminalData.socket.close();
             terminals.current.delete(id);
             outputListeners.current.delete(id);
+            terminalOutputHistory.current.delete(id);
         } else {
             console.warn(`Terminal with ID "${id}" does not exist.`);
         }
@@ -141,6 +168,8 @@ export const TerminalProvider = ({ children }) => {
                 createTerminal,
                 getTerminal,
                 getAllTerminals,
+                getTerminalHistory,
+                clearTerminalHistory,
                 disposeTerminal,
                 sendInput,
                 subscribeToOutput,

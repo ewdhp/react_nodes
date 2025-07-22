@@ -51,29 +51,41 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
 
   const [output, setOutput] = useState('');
   const [input, setInput] = useState('');
-  const { createTerminal, sendInput, subscribeToOutput } = useTerminalSocket();
+  const { createTerminal, sendInput, subscribeToOutput, getTerminalHistory, clearTerminalHistory } = useTerminalSocket();
   const outputRef = useRef(null);
   const terminalId = `node-${nodeId}`;
+  const isInitialized = useRef(false);
 
   useEffect(() => {
-    // Create terminal when component mounts
-    createTerminal(terminalId);
+    // Only create terminal if it doesn't exist yet
+    if (!isInitialized.current) {
+      createTerminal(terminalId);
+      
+      // Load existing history
+      const history = getTerminalHistory(terminalId);
+      if (history) {
+        setOutput(history);
+      }
+      
+      isInitialized.current = true;
+    }
 
-    // Subscribe to output
-    const unsubscribe = subscribeToOutput(terminalId, (data) => {
-      console.log('Terminal received raw data:', data); // Debug log
-      console.log('Raw data bytes:', data.split('').map(c => c.charCodeAt(0))); // Show character codes
-      const formatted = formatOutput(data);
-      console.log('Formatted output:', formatted); // Debug log
-      console.log('Formatted lines:', formatted.split('\n')); // Show as array of lines
-      setOutput(prev => prev + formatted);
-    });
+    // Subscribe to output - distinguish between new data and historical data
+    const unsubscribe = subscribeToOutput(terminalId, (data, metadata = {}) => {
+      // Only add new data, not historical data (which is already loaded above)
+      if (!metadata.isHistory) {
+        console.log('Terminal received new data:', data); // Debug log
+        const formatted = formatOutput(data);
+        console.log('Formatted new output:', formatted); // Debug log
+        setOutput(prev => prev + formatted);
+      }
+    }, { includeHistory: false }); // Don't include history in subscription
 
     // Cleanup on unmount
     return () => {
       unsubscribe();
     };
-  }, [nodeId, createTerminal, subscribeToOutput, terminalId]);
+  }, [nodeId, createTerminal, subscribeToOutput, getTerminalHistory, terminalId]);
 
   useEffect(() => {
     // Auto-scroll to bottom when new output is added
@@ -116,6 +128,7 @@ const BasicTerminal = ({ nodeId, nodeName, isMaximized, onToggleMaximize }) => {
 
   const clearTerminal = () => {
     setOutput('');
+    clearTerminalHistory(terminalId);
   };
 
   return (
